@@ -10,11 +10,24 @@ const DEFAULT_CONFIG = {
   limit: 50
 };
 
+// Normalize URL (automatically prepends http:// if missing and strips trailing slashes)
+function normalizeUrl(url) {
+  if (!url || typeof url !== 'string') return 'http://localhost:8042';
+  let trimmed = url.trim();
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    trimmed = 'http://' + trimmed;
+  }
+  return trimmed.replace(/\/+$/, '');
+}
+
 // Retrieve stored settings
 async function getConfig() {
   return new Promise((resolve) => {
     chrome.storage.local.get(['planb_wizzard_config'], (result) => {
-      resolve({ ...DEFAULT_CONFIG, ...(result.planb_wizzard_config || {}) });
+      const stored = result.planb_wizzard_config || {};
+      const config = { ...DEFAULT_CONFIG, ...stored };
+      config.orthancUrl = normalizeUrl(config.orthancUrl);
+      resolve(config);
     });
   });
 }
@@ -92,20 +105,27 @@ function formatGender(rawSex) {
   return { raw: rawSex, textRu: 'Другой', textEn: 'Other', code: 'O' };
 }
 
-// Try fetching endpoint with candidate base URLs
-async function tryFetchEndpoint(baseUrl, path, options) {
-  const cleanBase = baseUrl.replace(/\/$/, '');
+// Try fetching endpoint with candidate base URLs and 5s timeout guard
+async function tryFetchEndpoint(baseUrl, path, options = {}) {
+  const cleanBase = normalizeUrl(baseUrl);
   const targetUrl = `${cleanBase}${path}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
   try {
-    const res = await fetch(targetUrl, options);
+    const res = await fetch(targetUrl, { ...options, signal: controller.signal });
+    clearTimeout(timeoutId);
     return { ok: res.ok, status: res.status, res, url: targetUrl };
   } catch (err) {
-    return { ok: false, status: 0, error: err.message, url: targetUrl };
+    clearTimeout(timeoutId);
+    const msg = err.name === 'AbortError' ? 'Превышено время ожидания (5 сек)' : err.message;
+    return { ok: false, status: 0, error: msg, url: targetUrl };
   }
 }
 
 // Fetch studies from Orthanc with fallback URLs & ports
 async function fetchStudies(config) {
+  config.orthancUrl = normalizeUrl(config.orthancUrl);
   const headers = getHeaders(config);
   
   const candidateUrls = [config.orthancUrl];
@@ -113,7 +133,7 @@ async function fetchStudies(config) {
     candidateUrls.push(config.orthancUrl.replace(':4242', ':8042'));
     candidateUrls.push(config.orthancUrl.replace(':4242', ''));
   } else if (!config.orthancUrl.includes(':8042')) {
-    candidateUrls.push(config.orthancUrl.replace(/\/$/, '') + ':8042');
+    candidateUrls.push(config.orthancUrl + ':8042');
   }
 
   let lastError = '';
@@ -125,7 +145,6 @@ async function fetchStudies(config) {
     let result = await tryFetchEndpoint(baseUrl, '/studies?expand', { method: 'GET', headers });
     
     if (result.status === 401) {
-      // If default fails, try with orthanc:orthanc as fallback
       const fallbackHeaders = { 'Accept': 'application/json', 'Authorization': `Basic ${btoa('orthanc:orthanc')}` };
       result = await tryFetchEndpoint(baseUrl, '/studies?expand', { method: 'GET', headers: fallbackHeaders });
       if (result.ok) {
@@ -168,7 +187,7 @@ async function fetchStudies(config) {
   if (!studiesData) {
     return {
       success: false,
-      error: `Ошибка авторизации или подключения: ${lastError}`
+      error: `Ошибка подключения: ${lastError}`
     };
   }
 
@@ -230,6 +249,7 @@ async function fetchStudies(config) {
 
 // Test connection to Orthanc
 async function testConnection(config) {
+  config.orthancUrl = normalizeUrl(config.orthancUrl);
   const candidateUrls = [config.orthancUrl];
   if (config.orthancUrl.includes(':4242')) {
     candidateUrls.push(config.orthancUrl.replace(':4242', ':8042'));
@@ -248,7 +268,7 @@ async function testConnection(config) {
     }
   }
 
-  return { success: false, error: 'Не удалось подключиться к Orthanc' };
+  return { success: false, error: 'Не удалось подключиться к Orthanc. Проверьте правильность URL и доступность порта.' };
 }
 
 // Message Listener
@@ -259,8 +279,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'SET_CONFIG') {
-    chrome.storage.local.set({ planb_wizzard_config: request.config }, () => {
-      sendResponse({ success: true });
+    const cleanConfig = { ...request.config };
+    cleanConfig.orthancUrl = normalizeUrl(cleanConfig.orthancUrl);
+    chrome.storage.local.set({ planb_wizzard_config: cleanConfig }, () => {
+      sendResponse({ success: true, config: cleanConfig });
     });
     return true;
   }

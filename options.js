@@ -2,6 +2,15 @@
  * PlanB Orthanc Wizzard - Options Controller
  */
 
+function normalizeUrlInput(url) {
+  if (!url) return '';
+  let trimmed = url.trim();
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    trimmed = 'http://' + trimmed;
+  }
+  return trimmed.replace(/\/+$/, '');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('settings-form');
   const orthancUrlInput = document.getElementById('orthancUrl');
@@ -24,8 +33,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Save config
   form.addEventListener('submit', (e) => {
     e.preventDefault();
+    const cleanUrl = normalizeUrlInput(orthancUrlInput.value);
+    orthancUrlInput.value = cleanUrl;
+
     const config = {
-      orthancUrl: orthancUrlInput.value.trim(),
+      orthancUrl: cleanUrl,
       username: usernameInput.value.trim(),
       password: passwordInput.value.trim(),
       limit: parseInt(limitInput.value, 10) || 50
@@ -42,18 +54,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Test Connection
   testBtn.addEventListener('click', () => {
+    const cleanUrl = normalizeUrlInput(orthancUrlInput.value);
+    orthancUrlInput.value = cleanUrl;
+
     showStatus('Проверка соединения с Orthanc...', 'success');
+    
     const config = {
-      orthancUrl: orthancUrlInput.value.trim(),
+      orthancUrl: cleanUrl,
       username: usernameInput.value.trim(),
       password: passwordInput.value.trim()
     };
 
     chrome.runtime.sendMessage({ action: 'TEST_CONNECTION', config }, (res) => {
+      if (chrome.runtime.lastError) {
+        showStatus(`Ошибка расширения: ${chrome.runtime.lastError.message}`, 'error');
+        return;
+      }
       if (res && res.success) {
-        showStatus(`Соединение успешно! Orthanc версия: ${res.version}`, 'success');
+        showStatus(`Соединение успешно! Orthanc версия: ${res.version} (${res.workingUrl})`, 'success');
       } else {
-        showStatus(`Ошибка соединения: ${res.error}`, 'error');
+        showStatus(`Ошибка соединения: ${res ? res.error : 'Неизвестная ошибка'}`, 'error');
       }
     });
   });
