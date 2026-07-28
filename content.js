@@ -236,35 +236,58 @@
 
   // Find PlanB's "+ Добавить пациента" button element
   function findAddPatientButton() {
-    const candidates = Array.from(document.querySelectorAll('button, a, div, span, [role="button"]'));
+    const candidates = Array.from(document.querySelectorAll('button, a, div, span, p, [role="button"]'));
     for (const el of candidates) {
       if (el.id === 'planb-wizzard-btn' || el.closest('#planb-wizzard-btn')) continue;
 
       const text = (el.textContent || '').trim().toLowerCase();
-      if (text.includes('добавить пациента') || text.includes('add patient')) {
-        const btn = el.closest('button, a, [role="button"]') || el;
+      if ((text.includes('добавить') && text.includes('пациент')) || text.includes('add patient') || text.includes('создать пациента')) {
+        const btn = el.closest('button, a, [role="button"], .btn') || el;
         if (btn.id !== 'planb-wizzard-btn') return btn;
       }
     }
     return null;
   }
 
-  // Inject Wizzard Button into PlanB page inline right next to "+ Добавить пациента"
-  function injectWizzardButton() {
-    if (document.getElementById('planb-wizzard-btn')) return;
-
-    const addPatientBtn = findAddPatientButton();
-    if (!addPatientBtn || !addPatientBtn.parentElement) return;
-
+  function createWizzardBtnElement() {
     const wizzardBtn = document.createElement('button');
     wizzardBtn.id = 'planb-wizzard-btn';
     wizzardBtn.className = 'planb-wizzard-btn';
     wizzardBtn.type = 'button';
     wizzardBtn.innerHTML = `${WIZARD_ICON} <span>Wizzard</span>`;
     wizzardBtn.addEventListener('click', openModal);
+    return wizzardBtn;
+  }
 
-    // Insert directly after "+ Добавить пациента" button
-    addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
+  // Inject Wizzard Button inline next to "+ Добавить пациента" (with safe fallback)
+  function injectWizzardButton() {
+    let wizzardBtn = document.getElementById('planb-wizzard-btn');
+    const addPatientBtn = findAddPatientButton();
+
+    if (addPatientBtn && addPatientBtn.parentElement) {
+      if (!wizzardBtn) {
+        wizzardBtn = createWizzardBtnElement();
+      }
+
+      // Ensure it is placed directly after "+ Добавить пациента"
+      if (addPatientBtn.nextSibling !== wizzardBtn) {
+        wizzardBtn.style.position = 'static';
+        wizzardBtn.style.bottom = 'auto';
+        wizzardBtn.style.right = 'auto';
+        addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
+      }
+      return;
+    }
+
+    // Fallback if "+ Добавить пациента" button has not yet rendered in DOM
+    if (!wizzardBtn) {
+      wizzardBtn = createWizzardBtnElement();
+      wizzardBtn.style.position = 'fixed';
+      wizzardBtn.style.bottom = '24px';
+      wizzardBtn.style.right = '24px';
+      wizzardBtn.style.zIndex = '99999';
+      document.body.appendChild(wizzardBtn);
+    }
   }
 
   // Helper to trigger events on inputs so frameworks (React, Vue, Angular) register changes
@@ -390,7 +413,7 @@
     });
   }
 
-  // Observer to inject button as soon as DOM loads
+  // Observer to inject button as soon as DOM loads or updates
   const observer = new MutationObserver(() => {
     injectWizzardButton();
   });
