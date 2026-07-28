@@ -7,20 +7,13 @@
     "storage"
   ],
   "host_permissions": [
-    "https://192.168.5.155/*",
-    "http://192.168.5.155/*",
-    "http://192.168.5.155:4242/*",
-    "http://*/*",
-    "https://*/*"
+    "<all_urls>"
   ],
-  "background": {
-    "service_worker": "background.js"
-  },
   "content_scripts": [
     {
       "matches": [
-        "https://192.168.5.155/*",
-        "http://192.168.5.155/*"
+        "http://*/*",
+        "https://*/*"
       ],
       "css": ["modal.css"],
       "js": ["content.js"],

@@ -14,9 +14,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load existing config
   chrome.runtime.sendMessage({ action: 'GET_CONFIG' }, (config) => {
     if (config) {
-      orthancUrlInput.value = config.orthancUrl || 'http://192.168.5.155:4242';
-      usernameInput.value = config.username || '';
-      passwordInput.value = config.password || '';
+      orthancUrlInput.value = config.orthancUrl || 'http://localhost:8042';
+      usernameInput.value = config.username || 'orthanc';
+      passwordInput.value = config.password || 'orthanc';
       limitInput.value = config.limit || 50;
     }
   });

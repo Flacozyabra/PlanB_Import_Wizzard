@@ -4,7 +4,7 @@
  */
 
 const DEFAULT_CONFIG = {
-  orthancUrl: 'http://192.168.5.155:8042',
+  orthancUrl: 'http://localhost:8042',
   username: 'orthanc',
   password: 'orthanc',
   limit: 50
@@ -129,7 +129,6 @@ async function fetchStudies(config) {
       const fallbackHeaders = { 'Accept': 'application/json', 'Authorization': `Basic ${btoa('orthanc:orthanc')}` };
       result = await tryFetchEndpoint(baseUrl, '/studies?expand', { method: 'GET', headers: fallbackHeaders });
       if (result.ok) {
-        // Save orthanc:orthanc into storage
         chrome.storage.local.set({ planb_wizzard_config: { ...config, username: 'orthanc', password: 'orthanc', orthancUrl: baseUrl } });
       }
     }

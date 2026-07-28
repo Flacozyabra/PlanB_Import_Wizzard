@@ -58,7 +58,7 @@
         <div class="pbw-footer">
           <div class="pbw-footer-info">
             <span class="pbw-status-dot"></span>
-            <span id="pbw-orthanc-status">Orthanc: http://192.168.5.155:8042</span>
+            <span id="pbw-orthanc-status">Orthanc: http://localhost:8042</span>
           </div>
           <div id="pbw-count-info">Записей: 0</div>
         </div>
