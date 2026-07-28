@@ -69,7 +69,7 @@
 
     // Event listeners
     document.getElementById('pbw-close-btn').addEventListener('click', closeModal);
-    document.getElementById('pbw-refresh-btn').addEventListener('click', loadStudies);
+    document.getElementById('pbw-refresh-btn').addEventListener('click', () => loadStudies(false));
     document.getElementById('pbw-search-input').addEventListener('input', handleSearch);
 
     // Close on clicking backdrop
@@ -81,7 +81,7 @@
   function openModal() {
     createModalDOM();
     modalContainer.classList.add('pbw-active');
-    loadStudies();
+    loadStudies(false);
   }
 
   function closeModal() {
@@ -90,8 +90,8 @@
     }
   }
 
-  // Load studies from background script with fallback
-  function loadStudies() {
+  // Load studies with 350ms wakeup retry & interactive reload button if extension was updated
+  function loadStudies(isRetry) {
     const body = document.getElementById('pbw-body');
     if (!body) return;
 
@@ -105,19 +105,18 @@
     chrome.runtime.sendMessage({ action: 'GET_STUDIES' }, async (response) => {
       if (chrome.runtime.lastError) {
         const lastErr = chrome.runtime.lastError.message || '';
-        // Try fallback
-        chrome.storage.local.get(['planb_wizzard_config'], async (result) => {
-          const config = result.planb_wizzard_config || {};
-          const fallbackRes = await directFetchStudiesFallback(config);
-          if (fallbackRes.success) {
-            const statusEl = document.getElementById('pbw-orthanc-status');
-            if (statusEl) statusEl.textContent = `Orthanc: ${fallbackRes.usedUrl}`;
-            allStudies = fallbackRes.studies || [];
-            renderStudiesTable(allStudies);
-          } else {
-            renderError(lastErr || fallbackRes.error);
-          }
-        });
+        
+        // Auto-retry once after 350ms to wake up idle Service Worker
+        if (!isRetry && (lastErr.includes('Receiving end') || lastErr.includes('Could not establish'))) {
+          setTimeout(() => {
+            loadStudies(true);
+          }, 350);
+          return;
+        }
+
+        renderReloadPageRequired(
+          'Расширение было обновлено в настройках браузера. Пожалуйста, обновите эту страницу для подключения.'
+        );
         return;
       }
 
@@ -137,121 +136,36 @@
     });
   }
 
-  // Direct fetch fallback from content script
-  async function directFetchStudiesFallback(config) {
-    let baseUrl = config.orthancUrl || 'http://192.168.5.155:8042';
-    if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
-      baseUrl = 'http://' + baseUrl;
-    }
-    baseUrl = baseUrl.replace(/\/$/, '');
+  function renderReloadPageRequired(message) {
+    const body = document.getElementById('pbw-body');
+    if (!body) return;
+    body.innerHTML = `
+      <div class="pbw-status-box" style="color: #f87171;">
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">🔄 Требуется обновление страницы</div>
+        <div style="max-width: 550px; line-height: 1.5; font-size: 13px; margin-bottom: 18px; color: #cbd5e1;">
+          ${escapeHtml(message)}
+        </div>
+        <button id="pbw-reload-page-btn" style="
+          background: #3b82f6;
+          color: #ffffff;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background 0.2s ease;
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        ">Обновить страницу (F5)</button>
+      </div>
+    `;
 
-    const candidates = [baseUrl, 'http://192.168.5.155:8042', 'http://192.168.5.155:4242', 'http://localhost:8042'];
-
-    const user = config.username || 'orthanc';
-    const pass = config.password || 'orthanc';
-    const headers = { 'Accept': 'application/json' };
-    if (user || pass) {
-      headers['Authorization'] = `Basic ${btoa(`${user}:${pass}`)}`;
-    }
-
-    for (const urlBase of candidates) {
-      const target = `${urlBase}/studies?expand`;
-      try {
-        const res = await fetch(target, { method: 'GET', headers });
-        if (res.status === 401) {
-          return { success: false, error: 'Ошибка 401 (Unauthorized): Неверный логин или пароль для Orthanc' };
-        }
-        if (res.ok) {
-          const data = await res.json();
-          return parseStudiesClientSide(data, urlBase);
-        }
-      } catch (e) {}
-    }
-
-    return { success: false, error: 'Не удалось подключиться к Orthanc по протоколам HTTP/HTTPS' };
-  }
-
-  function parseStudiesClientSide(studiesData, urlBase) {
-    try {
-      const parsedStudies = studiesData.map((study) => {
-        if (typeof study === 'string') {
-          return {
-            orthancId: study,
-            patientId: study,
-            patientName: { fullName: 'Исследование ' + study, lastName: '', firstName: '', middleName: '' },
-            patientBirthDate: { iso: '', ru: '' },
-            patientSex: { raw: '', textRu: '', textEn: '', code: '' },
-            studyDate: { iso: '', ru: '' },
-            studyDescription: 'КТ исследование',
-            accessionNumber: '',
-            modality: 'CT',
-            seriesCount: 1
-          };
-        }
-
-        const mainTags = study.MainDicomTags || {};
-        const patientMainTags = study.PatientMainDicomTags || {};
-
-        const rawName = mainTags.PatientName || patientMainTags.PatientName || '';
-        const nameParsed = parsePatientName(rawName);
-
-        const rawBirth = mainTags.PatientBirthDate || patientMainTags.PatientBirthDate || '';
-        const birthParsed = formatDicomDate(rawBirth);
-
-        const rawStudyDate = mainTags.StudyDate || '';
-        const studyDateParsed = formatDicomDate(rawStudyDate);
-
-        const rawSex = mainTags.PatientSex || patientMainTags.PatientSex || '';
-        const sexParsed = formatGender(rawSex);
-
-        return {
-          orthancId: study.ID || '',
-          patientId: mainTags.PatientID || patientMainTags.PatientID || '',
-          patientName: nameParsed,
-          patientBirthDate: birthParsed,
-          patientSex: sexParsed,
-          studyDate: studyDateParsed,
-          studyDescription: mainTags.StudyDescription || 'КТ исследование',
-          accessionNumber: mainTags.AccessionNumber || '',
-          modality: mainTags.Modality || 'CT',
-          seriesCount: (study.Series || []).length
-        };
+    const reloadBtn = document.getElementById('pbw-reload-page-btn');
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', () => {
+        window.location.reload();
       });
-
-      parsedStudies.sort((a, b) => (b.studyDate.iso || '').localeCompare(a.studyDate.iso || ''));
-      return { success: true, studies: parsedStudies, usedUrl: urlBase };
-    } catch (e) {
-      return { success: false, error: 'Ошибка обработки DICOM: ' + e.message };
     }
-  }
-
-  function formatDicomDate(rawDate) {
-    if (!rawDate || typeof rawDate !== 'string') return { iso: '', ru: '' };
-    const cleaned = rawDate.replace(/\D/g, '');
-    if (cleaned.length < 8) return { iso: rawDate, ru: rawDate };
-    return {
-      iso: `${cleaned.substring(0, 4)}-${cleaned.substring(4, 6)}-${cleaned.substring(6, 8)}`,
-      ru: `${cleaned.substring(6, 8)}.${cleaned.substring(4, 6)}.${cleaned.substring(0, 4)}`
-    };
-  }
-
-  function parsePatientName(rawName) {
-    if (!rawName || typeof rawName !== 'string') return { fullName: '', lastName: '', firstName: '', middleName: '' };
-    const cleaned = rawName.replace(/=/g, '').trim();
-    let parts = cleaned.includes('^') ? cleaned.split('^') : cleaned.split(/\s+/);
-    parts = parts.map(p => p.trim()).filter(Boolean);
-    const lastName = parts[0] || '';
-    const firstName = parts[1] || '';
-    const middleName = parts[2] || '';
-    return { fullName: [lastName, firstName, middleName].filter(Boolean).join(' '), lastName, firstName, middleName };
-  }
-
-  function formatGender(rawSex) {
-    if (!rawSex) return { raw: '', textRu: '', textEn: '', code: '' };
-    const sex = rawSex.toUpperCase().trim();
-    if (sex === 'M' || sex === 'MALE' || sex === 'М') return { raw: rawSex, textRu: 'Мужской', textEn: 'Male', code: 'M' };
-    if (sex === 'F' || sex === 'FEMALE' || sex === 'Ж') return { raw: rawSex, textRu: 'Женский', textEn: 'Female', code: 'F' };
-    return { raw: rawSex, textRu: 'Другой', textEn: 'Other', code: 'O' };
   }
 
   function renderError(message) {
@@ -259,7 +173,7 @@
     if (!body) return;
     body.innerHTML = `
       <div class="pbw-status-box" style="color: #f87171;">
-        <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">⚠️ Не удалось загрузить исследования</div>
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">⚠️ Ошибка подключения к Orthanc</div>
         <div style="max-width: 650px; line-height: 1.5; font-size: 13px;">${escapeHtml(message)}</div>
       </div>
     `;
