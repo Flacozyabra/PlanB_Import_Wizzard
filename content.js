@@ -4,7 +4,7 @@
  */
 
 (function () {
-  'use me';
+  'use strict';
 
   let allStudies = [];
   let modalContainer = null;
@@ -57,7 +57,7 @@
         <div class="pbw-footer">
           <div class="pbw-footer-info">
             <span class="pbw-status-dot"></span>
-            <span id="pbw-orthanc-status">Orthanc: http://192.168.5.155:4242</span>
+            <span id="pbw-orthanc-status">Orthanc: http://192.168.5.155:8042 (или 4242)</span>
           </div>
           <div id="pbw-count-info">Записей: 0</div>
         </div>
@@ -108,8 +108,13 @@
       }
 
       if (!response || !response.success) {
-        renderError('Не удалось получить данные из Orthanc: ' + (response ? response.error : 'Неизвестная ошибка'));
+        renderError(response ? response.error : 'Неизвестная ошибка');
         return;
+      }
+
+      if (response.usedUrl) {
+        const statusEl = document.getElementById('pbw-orthanc-status');
+        if (statusEl) statusEl.textContent = `Orthanc: ${response.usedUrl}`;
       }
 
       allStudies = response.studies || [];
@@ -122,10 +127,12 @@
     if (!body) return;
     body.innerHTML = `
       <div class="pbw-status-box" style="color: #f87171;">
-        <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">⚠️ Ошибка подключения</div>
-        <div>${message}</div>
-        <div style="margin-top: 16px; font-size: 12px; color: #94a3b8;">
-          Проверьте адрес Orthanc в настройках расширения и доступность сервера.
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">⚠️ Ошибка подключения к Orthanc</div>
+        <div style="max-width: 600px; line-height: 1.5;">${escapeHtml(message)}</div>
+        <div style="margin-top: 16px; font-size: 13px; color: #94a3b8; line-height: 1.5;">
+          <strong>Возможные причины:</strong><br/>
+          1. Веб-интерфейс Orthanc работает на порту <strong>8042</strong> (вместо DICOM порта 4242). Попробуйте указать <code>http://192.168.5.155:8042</code> в настройках.<br/>
+          2. Проверьте логин и пароль в параметрах расширения (opera://extensions).
         </div>
       </div>
     `;
@@ -236,7 +243,6 @@
   function injectWizzardButton() {
     if (document.getElementById('planb-wizzard-btn')) return;
 
-    // Search for PlanB's "Add Patient" button
     const buttons = Array.from(document.querySelectorAll('button, a, .btn, [role="button"]'));
     const addPatientBtn = buttons.find((el) => {
       const text = (el.textContent || '').toLowerCase().trim();
@@ -253,7 +259,6 @@
     if (addPatientBtn && addPatientBtn.parentElement) {
       addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
     } else {
-      // Fallback: search for page header or main container
       const container = document.querySelector('header, .toolbar, .content-header, .page-header, table') || document.body;
       if (container === document.body) {
         wizzardBtn.style.position = 'fixed';
@@ -269,7 +274,6 @@
   function setInputValue(input, value) {
     if (!input) return;
 
-    // React native value setter workaround
     const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
     if (nativeInputValueSetter) {
       nativeInputValueSetter.call(input, value);
@@ -281,7 +285,6 @@
     input.dispatchEvent(new Event('change', { bubbles: true }));
     input.dispatchEvent(new Event('blur', { bubbles: true }));
 
-    // Highlight populated field
     const origBorder = input.style.borderColor;
     const origBoxShadow = input.style.boxShadow;
     input.style.borderColor = '#10b981';
@@ -296,7 +299,6 @@
   function applyStudyToPlanB(study) {
     closeModal();
 
-    // Step 1: Open PlanB "Add Patient" modal if not already open
     const buttons = Array.from(document.querySelectorAll('button, a, .btn, [role="button"]'));
     const addPatientBtn = buttons.find((el) => {
       if (el.id === 'planb-wizzard-btn') return false;
@@ -308,7 +310,6 @@
       addPatientBtn.click();
     }
 
-    // Step 2: Wait for modal form inputs to be ready
     setTimeout(() => {
       fillFormFields(study);
     }, 400);
@@ -318,14 +319,12 @@
     const inputs = Array.from(document.querySelectorAll('input, select, textarea'));
     if (inputs.length === 0) return;
 
-    // Map fields intelligently by checking id, name, placeholder, aria-label, associated label text
     inputs.forEach((input) => {
       const id = (input.id || '').toLowerCase();
       const name = (input.name || '').toLowerCase();
       const placeholder = (input.placeholder || '').toLowerCase();
       const type = (input.type || '').toLowerCase();
 
-      // Find label text if any
       let labelText = '';
       if (input.id) {
         const lbl = document.querySelector(`label[for="${input.id}"]`);
@@ -376,7 +375,6 @@
       // 7. Gender / Sex (Пол)
       else if (combinedText.includes('пол') || combinedText.includes('sex') || combinedText.includes('gender')) {
         if (input.tagName.toLowerCase() === 'select') {
-          // Select dropdown option matching M/F
           const options = Array.from(input.options);
           const sexCode = study.patientSex.code;
           const matchOpt = options.find((opt) => {
@@ -408,7 +406,6 @@
 
   observer.observe(document.body, { childList: true, subtree: true });
 
-  // Initial attempt
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', injectWizzardButton);
   } else {
