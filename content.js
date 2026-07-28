@@ -58,7 +58,7 @@
         <div class="pbw-footer">
           <div class="pbw-footer-info">
             <span class="pbw-status-dot"></span>
-            <span id="pbw-orthanc-status">Orthanc: http://localhost:8042</span>
+            <span id="pbw-orthanc-status">Orthanc...</span>
           </div>
           <div id="pbw-count-info">Записей: 0</div>
         </div>
@@ -104,7 +104,12 @@
 
     chrome.runtime.sendMessage({ action: 'GET_STUDIES' }, (response) => {
       if (chrome.runtime.lastError) {
-        renderError('Ошибка связи с расширением: ' + chrome.runtime.lastError.message);
+        const err = chrome.runtime.lastError.message || '';
+        if (err.includes('Receiving end does not exist') || err.includes('Could not establish connection')) {
+          renderError('Расширение было перезагружено в браузере. Пожалуйста, обновите эту страницу (нажмите F5).');
+        } else {
+          renderError('Ошибка связи с расширением: ' + err);
+        }
         return;
       }
 
@@ -128,7 +133,7 @@
     if (!body) return;
     body.innerHTML = `
       <div class="pbw-status-box" style="color: #f87171;">
-        <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">⚠️ Ошибка подключения к Orthanc</div>
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">⚠️ Требуется обновление страницы</div>
         <div style="max-width: 600px; line-height: 1.5;">${escapeHtml(message)}</div>
       </div>
     `;
@@ -243,7 +248,6 @@
       if (el.id === 'planb-wizzard-btn' || el.closest('#planb-wizzard-btn')) continue;
 
       const text = (el.innerText || el.textContent || '').trim();
-      // Ignore root containers with long text
       if (text.length > 60) continue;
 
       const lowerText = text.toLowerCase();
@@ -253,7 +257,6 @@
       }
     }
 
-    // Fallback locator by search input proximity
     const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"], input[placeholder*="пациент"]');
     if (searchInput) {
       const container = searchInput.closest('div, form, header, section') || searchInput.parentElement;
@@ -284,7 +287,6 @@
     const addPatientBtn = findAddPatientButton();
 
     if (addPatientBtn && addPatientBtn.parentElement) {
-      // If button is already in correct location next to addPatientBtn
       if (wizzardBtn && addPatientBtn.nextSibling === wizzardBtn) {
         return;
       }
@@ -303,7 +305,6 @@
       return;
     }
 
-    // Fallback 1: If search input is present, insert next to search input
     const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"]');
     if (searchInput && searchInput.parentElement) {
       if (wizzardBtn && searchInput.parentElement.contains(wizzardBtn)) return;
@@ -318,7 +319,6 @@
       return;
     }
 
-    // Fallback 2: Floating button in bottom right if top bar is completely absent
     if (!wizzardBtn) {
       isInjecting = true;
       try {
