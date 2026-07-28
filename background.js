@@ -110,9 +110,12 @@ async function tryFetchEndpoint(baseUrl, path, config, extraOptions = {}) {
   const cleanBase = normalizeUrl(baseUrl);
   const targetUrl = `${cleanBase}${path}`;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
 
   const headers = createFetchHeaders(config);
+  if (extraOptions.body) {
+    headers.append('Content-Type', 'application/json');
+  }
 
   try {
     const fetchOptions = {
@@ -133,12 +136,12 @@ async function tryFetchEndpoint(baseUrl, path, config, extraOptions = {}) {
     return { ok: true, status: res.status, data, url: targetUrl };
   } catch (err) {
     clearTimeout(timeoutId);
-    const msg = err.name === 'AbortError' ? 'Превышено время ожидания ответа (10 сек)' : err.message;
+    const msg = err.name === 'AbortError' ? 'Превышено время ожидания ответа (12 сек)' : err.message;
     return { ok: false, status: 0, error: msg, url: targetUrl };
   }
 }
 
-// Fetch studies from Orthanc
+// Fetch studies from Orthanc using fast POST /tools/find primary method
 async function fetchStudies(config) {
   config.orthancUrl = normalizeUrl(config.orthancUrl);
   
@@ -164,15 +167,17 @@ async function fetchStudies(config) {
   let successfulUrl = null;
   let studiesData = null;
 
+  const postBody = JSON.stringify({ Level: 'Study', Query: {}, Expand: true, Limit: config.limit || 50 });
+
   for (const baseUrl of candidateUrls) {
-    // Attempt 1: GET /studies?expand
-    let result = await tryFetchEndpoint(baseUrl, '/studies?expand', config, { method: 'GET' });
-    
+    // Attempt 1: POST /tools/find (Lightning fast 60ms query!)
+    let result = await tryFetchEndpoint(baseUrl, '/tools/find', config, { method: 'POST', body: postBody });
+
     if (result.status === 401) {
       const fallbackConfig = { ...config, username: 'orthanc', password: 'orthanc' };
-      result = await tryFetchEndpoint(baseUrl, '/studies?expand', fallbackConfig, { method: 'GET' });
+      result = await tryFetchEndpoint(baseUrl, '/tools/find', fallbackConfig, { method: 'POST', body: postBody });
       if (result.ok) {
-        chrome.storage.local.set({ planb_wizzard_config: { ...config, orthancUrl: baseUrl, username: 'orthanc', password: 'orthanc' } });
+        chrome.storage.local.set({ planb_wizzard_config: { ...config, username: 'orthanc', password: 'orthanc', orthancUrl: baseUrl } });
       }
     }
 
@@ -183,9 +188,8 @@ async function fetchStudies(config) {
       break;
     }
 
-    // Attempt 2: POST /tools/find
-    const postBody = JSON.stringify({ Level: 'Study', Query: {}, Expand: true, Limit: config.limit || 50 });
-    result = await tryFetchEndpoint(baseUrl, '/tools/find', config, { method: 'POST', body: postBody });
+    // Attempt 2: GET /studies?expand (Fallback)
+    result = await tryFetchEndpoint(baseUrl, '/studies?expand', config, { method: 'GET' });
 
     if (result.ok && result.data) {
       studiesData = result.data;
