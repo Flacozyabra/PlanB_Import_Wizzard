@@ -4,7 +4,7 @@
  */
 
 const DEFAULT_CONFIG = {
-  orthancUrl: 'http://localhost:8042',
+  orthancUrl: 'http://192.168.5.155:8042',
   username: 'orthanc',
   password: 'orthanc',
   limit: 50
@@ -12,7 +12,7 @@ const DEFAULT_CONFIG = {
 
 // Normalize URL (automatically prepends http:// if missing and strips trailing slashes)
 function normalizeUrl(url) {
-  if (!url || typeof url !== 'string') return 'http://localhost:8042';
+  if (!url || typeof url !== 'string') return 'http://192.168.5.155:8042';
   let trimmed = url.trim();
   if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
     trimmed = 'http://' + trimmed;
@@ -128,16 +128,26 @@ async function tryFetchEndpoint(baseUrl, path, options = {}) {
   }
 }
 
-// Fetch studies from Orthanc with fallback URLs & ports
+// Fetch studies from Orthanc with smart candidate fallback
 async function fetchStudies(config) {
-  config.orthancUrl = normalizeUrl(config.orthancUrl);
   const headers = getHeaders(config);
   
-  const candidateUrls = [config.orthancUrl];
-  if (config.orthancUrl.includes(':4242')) {
-    candidateUrls.push(config.orthancUrl.replace(':4242', ':8042'));
-  } else if (!config.orthancUrl.includes(':8042')) {
-    candidateUrls.push(config.orthancUrl + ':8042');
+  const rawCandidates = [
+    config.orthancUrl,
+    'http://192.168.5.155:8042',
+    'http://192.168.5.155:4242',
+    'http://localhost:8042'
+  ];
+
+  const candidateUrls = [];
+  for (const url of rawCandidates) {
+    if (!url) continue;
+    const norm = normalizeUrl(url);
+    if (!candidateUrls.includes(norm)) candidateUrls.push(norm);
+    if (norm.includes(':4242')) {
+      const port8042 = norm.replace(':4242', ':8042');
+      if (!candidateUrls.includes(port8042)) candidateUrls.push(port8042);
+    }
   }
 
   let lastError = '';
@@ -151,14 +161,13 @@ async function fetchStudies(config) {
     if (result.status === 401) {
       const fallbackHeaders = { 'Accept': 'application/json', 'Authorization': `Basic ${btoa('orthanc:orthanc')}` };
       result = await tryFetchEndpoint(baseUrl, '/studies?expand', { method: 'GET', headers: fallbackHeaders });
-      if (result.ok) {
-        chrome.storage.local.set({ planb_wizzard_config: { ...config, username: 'orthanc', password: 'orthanc', orthancUrl: baseUrl } });
-      }
     }
 
     if (result.ok && result.data) {
       studiesData = result.data;
       successfulUrl = baseUrl;
+      // Auto-save working URL to local storage
+      chrome.storage.local.set({ planb_wizzard_config: { ...config, orthancUrl: baseUrl, username: config.username || 'orthanc', password: config.password || 'orthanc' } });
       break;
     }
 
@@ -170,6 +179,7 @@ async function fetchStudies(config) {
     if (result.ok && result.data) {
       studiesData = result.data;
       successfulUrl = baseUrl;
+      chrome.storage.local.set({ planb_wizzard_config: { ...config, orthancUrl: baseUrl, username: config.username || 'orthanc', password: config.password || 'orthanc' } });
       break;
     }
 
@@ -245,12 +255,8 @@ async function fetchStudies(config) {
 
 // Test connection to Orthanc
 async function testConnection(config) {
-  config.orthancUrl = normalizeUrl(config.orthancUrl);
-  const candidateUrls = [config.orthancUrl];
-  if (config.orthancUrl.includes(':4242')) {
-    candidateUrls.push(config.orthancUrl.replace(':4242', ':8042'));
-  }
-
+  const norm = normalizeUrl(config.orthancUrl);
+  const candidateUrls = [norm, 'http://192.168.5.155:8042', 'http://192.168.5.155:4242', 'http://localhost:8042'];
   const headers = getHeaders(config);
 
   for (const baseUrl of candidateUrls) {
@@ -268,7 +274,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'GET_CONFIG') {
     getConfig()
       .then((cfg) => sendResponse(cfg))
-      .catch((err) => sendResponse({ orthancUrl: 'http://localhost:8042' }));
+      .catch((err) => sendResponse({ orthancUrl: 'http://192.168.5.155:8042' }));
     return true;
   }
 
