@@ -4,9 +4,9 @@
  */
 
 const DEFAULT_CONFIG = {
-  orthancUrl: 'http://192.168.5.155:4242',
-  username: 'admin',
-  password: 'admin',
+  orthancUrl: 'http://192.168.5.155:8042',
+  username: 'orthanc',
+  password: 'orthanc',
   limit: 50
 };
 
@@ -24,9 +24,9 @@ function getHeaders(config) {
   const headers = { 
     'Accept': 'application/json'
   };
-  if (config.username || config.password) {
-    const user = config.username || 'admin';
-    const pass = config.password || 'admin';
+  const user = config.username !== undefined && config.username !== '' ? config.username : 'orthanc';
+  const pass = config.password !== undefined && config.password !== '' ? config.password : 'orthanc';
+  if (user || pass) {
     const auth = btoa(`${user}:${pass}`);
     headers['Authorization'] = `Basic ${auth}`;
   }
@@ -108,10 +108,7 @@ async function tryFetchEndpoint(baseUrl, path, options) {
 async function fetchStudies(config) {
   const headers = getHeaders(config);
   
-  // List candidate URLs to try if primary fails
   const candidateUrls = [config.orthancUrl];
-  
-  // If primary port is 4242, also try 8042 (standard Orthanc HTTP port)
   if (config.orthancUrl.includes(':4242')) {
     candidateUrls.push(config.orthancUrl.replace(':4242', ':8042'));
     candidateUrls.push(config.orthancUrl.replace(':4242', ''));
@@ -128,7 +125,13 @@ async function fetchStudies(config) {
     let result = await tryFetchEndpoint(baseUrl, '/studies?expand', { method: 'GET', headers });
     
     if (result.status === 401) {
-      return { success: false, error: 'Ошибка 401 (Unauthorized): Неверный логин или пароль для Orthanc' };
+      // If default fails, try with orthanc:orthanc as fallback
+      const fallbackHeaders = { 'Accept': 'application/json', 'Authorization': `Basic ${btoa('orthanc:orthanc')}` };
+      result = await tryFetchEndpoint(baseUrl, '/studies?expand', { method: 'GET', headers: fallbackHeaders });
+      if (result.ok) {
+        // Save orthanc:orthanc into storage
+        chrome.storage.local.set({ planb_wizzard_config: { ...config, username: 'orthanc', password: 'orthanc', orthancUrl: baseUrl } });
+      }
     }
 
     if (result.ok) {
@@ -145,10 +148,6 @@ async function fetchStudies(config) {
     const postHeaders = { ...headers, 'Content-Type': 'application/json' };
     const body = JSON.stringify({ Level: 'Study', Query: {}, Expand: true, Limit: config.limit || 50 });
     result = await tryFetchEndpoint(baseUrl, '/tools/find', { method: 'POST', headers: postHeaders, body });
-
-    if (result.status === 401) {
-      return { success: false, error: 'Ошибка 401 (Unauthorized): Неверный логин или пароль для Orthanc' };
-    }
 
     if (result.ok) {
       try {
@@ -170,14 +169,13 @@ async function fetchStudies(config) {
   if (!studiesData) {
     return {
       success: false,
-      error: `${lastError}. Обратите внимание: порт 4242 обычно используется для протокола DICOM, а веб REST API Orthanc работает на порту 8042.`
+      error: `Ошибка авторизации или подключения: ${lastError}`
     };
   }
 
   // Transform into clean study records
   try {
     const parsedStudies = studiesData.map((study) => {
-      // Handle array of strings (if /studies returned unexpanded IDs)
       if (typeof study === 'string') {
         return {
           orthancId: study,
@@ -243,9 +241,6 @@ async function testConnection(config) {
 
   for (const baseUrl of candidateUrls) {
     const result = await tryFetchEndpoint(baseUrl, '/system', { method: 'GET', headers });
-    if (result.status === 401) {
-      return { success: false, error: 'Ошибка 401: Неверный логин или пароль' };
-    }
     if (result.ok) {
       try {
         const data = await result.res.json();
@@ -254,7 +249,7 @@ async function testConnection(config) {
     }
   }
 
-  return { success: false, error: 'Не удалось подключиться ни к 4242, ни к 8042 порту' };
+  return { success: false, error: 'Не удалось подключиться к Orthanc' };
 }
 
 // Message Listener
