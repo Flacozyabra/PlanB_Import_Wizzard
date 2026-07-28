@@ -1,6 +1,6 @@
 /**
  * PlanB Orthanc Wizzard - Content Script
- * Injects Wizzard button inline next to "+ Добавить пациента", handles modal UI, and fills PlanB patient form.
+ * Fast, non-blocking injector for Wizzard button right next to "+ Добавить пациента".
  */
 
 (function () {
@@ -8,6 +8,7 @@
 
   let allStudies = [];
   let modalContainer = null;
+  let isInjecting = false;
 
   // SVG Icons
   const WIZARD_ICON = `<svg viewBox="0 0 24 24"><path d="M7.5 5.6L5 7l1.4-2.5L5 2l2.5 1.4L10 2 8.6 4.5 10 7 7.5 5.6zm12 9.8l-2.5 1.4 1.4 2.5-2.5-1.4-2.5 1.4 1.4-2.5-1.4-2.5 2.5 1.4 2.5-1.4-1.4 2.5 1.4 2.5zM19.5 2l-1.4 2.5 2.5 1.4-2.5 1.4 1.4 2.5-2.5-1.4-2.5 1.4 1.4-2.5-1.4-2.5 2.5 1.4L19.5 2zM9.24 10.19l7.07-7.07c.39-.39 1.02-.39 1.41 0l2.83 2.83c.39.39.39 1.02 0 1.41l-7.07 7.07-4.24-4.24zm-1.41 1.42l4.24 4.24-6.36 6.36H1.5v-4.24l6.33-6.36z"/></svg>`;
@@ -234,41 +235,19 @@
       .replace(/"/g, '&quot;');
   }
 
-  // Multi-strategy locator to find PlanB's "+ Добавить пациента" button
+  // Fast locator to find PlanB's "+ Добавить пациента" button
   function findAddPatientButton() {
-    // Strategy 1: Check all elements for text "добавить пациента" or "добавить"
-    const all = Array.from(document.querySelectorAll('*'));
-    for (const el of all) {
+    const candidates = document.querySelectorAll('button, a, [role="button"], .btn, .button, div');
+    for (let i = 0; i < candidates.length; i++) {
+      const el = candidates[i];
       if (el.id === 'planb-wizzard-btn' || el.closest('#planb-wizzard-btn')) continue;
 
       const text = (el.innerText || el.textContent || '').trim().toLowerCase();
       if (text.includes('добавить пациента') || text.includes('add patient') || (text.includes('добавить') && text.includes('пациент'))) {
-        // Find closest button-like clickable parent
-        let current = el;
-        while (current && current !== document.body) {
-          const tag = current.tagName.toLowerCase();
-          const role = current.getAttribute('role');
-          const className = (current.className || '').toString().toLowerCase();
-
-          if (tag === 'button' || tag === 'a' || role === 'button' || className.includes('btn') || className.includes('button')) {
-            if (current.id !== 'planb-wizzard-btn') return current;
-          }
-          current = current.parentElement;
-        }
-        if (el.id !== 'planb-wizzard-btn') return el;
-      }
-    }
-
-    // Strategy 2: Find search input [placeholder*="ФИО"] and get button next to it
-    const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"], input[placeholder*="пациент"]');
-    if (searchInput) {
-      const container = searchInput.closest('div, form, header, section') || searchInput.parentElement;
-      if (container) {
-        const btn = container.querySelector('button, a, [role="button"], .btn');
+        const btn = el.closest('button, a, [role="button"], .btn') || el;
         if (btn && btn.id !== 'planb-wizzard-btn') return btn;
       }
     }
-
     return null;
   }
 
@@ -282,37 +261,43 @@
     return wizzardBtn;
   }
 
-  // Inject Wizzard Button inline right next to "+ Добавить пациента"
+  // Inject Wizzard Button inline next to "+ Добавить пациента" without looping
   function injectWizzardButton() {
+    if (isInjecting) return;
+
+    const existingBtn = document.getElementById('planb-wizzard-btn');
     const addPatientBtn = findAddPatientButton();
-    let wizzardBtn = document.getElementById('planb-wizzard-btn');
 
     if (addPatientBtn && addPatientBtn.parentElement) {
-      if (!wizzardBtn) {
-        wizzardBtn = createWizzardBtnElement();
+      // If button already exists and is in the correct location, do nothing
+      if (existingBtn && addPatientBtn.nextSibling === existingBtn) {
+        return;
       }
 
-      // Clear fixed positioning if it was previously floating
-      wizzardBtn.style.position = 'static';
-      wizzardBtn.style.bottom = 'auto';
-      wizzardBtn.style.right = 'auto';
-      wizzardBtn.style.zIndex = '100';
-
-      // Insert directly after "+ Добавить пациента" button in DOM
-      if (addPatientBtn.nextSibling !== wizzardBtn) {
+      isInjecting = true;
+      try {
+        const wizzardBtn = existingBtn || createWizzardBtnElement();
+        wizzardBtn.style.position = 'static';
         addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
+      } finally {
+        setTimeout(() => { isInjecting = false; }, 50);
       }
       return;
     }
 
-    // If "+ Добавить пациента" is not found in DOM yet, place near search input or top toolbar (do NOT place fixed in corner)
-    const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"]');
-    if (searchInput && searchInput.parentElement) {
-      if (!wizzardBtn) {
-        wizzardBtn = createWizzardBtnElement();
+    // Fallback: If search input is present
+    if (!existingBtn) {
+      const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"]');
+      if (searchInput && searchInput.parentElement) {
+        isInjecting = true;
+        try {
+          const wizzardBtn = createWizzardBtnElement();
+          wizzardBtn.style.position = 'static';
+          searchInput.parentElement.insertBefore(wizzardBtn, searchInput.nextSibling);
+        } finally {
+          setTimeout(() => { isInjecting = false; }, 50);
+        }
       }
-      wizzardBtn.style.position = 'static';
-      searchInput.parentElement.insertBefore(wizzardBtn, searchInput.nextSibling);
     }
   }
 
@@ -439,20 +424,16 @@
     });
   }
 
-  // Observer to inject button as soon as DOM loads or updates
+  // Observer to inject button as soon as DOM loads or updates, with debouncing
+  let debounceTimeout = null;
   const observer = new MutationObserver(() => {
-    injectWizzardButton();
+    if (debounceTimeout) clearTimeout(debounceTimeout);
+    debounceTimeout = setTimeout(() => {
+      injectWizzardButton();
+    }, 100);
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
-
-  // Periodically re-check for 5 seconds after page load to catch late SPA renders
-  let checks = 0;
-  const interval = setInterval(() => {
-    injectWizzardButton();
-    checks++;
-    if (checks > 20) clearInterval(interval);
-  }, 250);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', injectWizzardButton);
