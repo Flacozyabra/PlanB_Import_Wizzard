@@ -90,7 +90,7 @@
     }
   }
 
-  // Load studies with automatic dual-layer fallback
+  // Load studies from background script with fallback
   function loadStudies() {
     const body = document.getElementById('pbw-body');
     if (!body) return;
@@ -103,8 +103,9 @@
     `;
 
     chrome.runtime.sendMessage({ action: 'GET_STUDIES' }, async (response) => {
-      if (chrome.runtime.lastError || !response || !response.success) {
-        // Fallback: direct fetch from storage config if message passing fails
+      if (chrome.runtime.lastError) {
+        const lastErr = chrome.runtime.lastError.message || '';
+        // Try fallback
         chrome.storage.local.get(['planb_wizzard_config'], async (result) => {
           const config = result.planb_wizzard_config || {};
           const fallbackRes = await directFetchStudiesFallback(config);
@@ -114,10 +115,15 @@
             allStudies = fallbackRes.studies || [];
             renderStudiesTable(allStudies);
           } else {
-            const errMsg = response && response.error ? response.error : fallbackRes.error;
-            renderError(errMsg);
+            renderError(lastErr || fallbackRes.error);
           }
         });
+        return;
+      }
+
+      if (!response || !response.success) {
+        const errMsg = response && response.error ? response.error : 'Неизвестная ошибка получения данных из Orthanc';
+        renderError(errMsg);
         return;
       }
 
@@ -133,18 +139,13 @@
 
   // Direct fetch fallback from content script
   async function directFetchStudiesFallback(config) {
-    let baseUrl = config.orthancUrl || 'http://localhost:8042';
+    let baseUrl = config.orthancUrl || 'http://192.168.5.155:8042';
     if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
       baseUrl = 'http://' + baseUrl;
     }
     baseUrl = baseUrl.replace(/\/$/, '');
 
-    const candidates = [baseUrl];
-    if (baseUrl.includes(':4242')) {
-      candidates.push(baseUrl.replace(':4242', ':8042'));
-    } else if (!baseUrl.includes(':8042')) {
-      candidates.push(baseUrl + ':8042');
-    }
+    const candidates = [baseUrl, 'http://192.168.5.155:8042', 'http://192.168.5.155:4242', 'http://localhost:8042'];
 
     const user = config.username || 'orthanc';
     const pass = config.password || 'orthanc';
@@ -167,7 +168,7 @@
       } catch (e) {}
     }
 
-    return { success: false, error: 'Не удалось загрузить исследования из Orthanc. Проверьте правильность URL в настройках.' };
+    return { success: false, error: 'Не удалось подключиться к Orthanc по протоколам HTTP/HTTPS' };
   }
 
   function parseStudiesClientSide(studiesData, urlBase) {
@@ -259,7 +260,7 @@
     body.innerHTML = `
       <div class="pbw-status-box" style="color: #f87171;">
         <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">⚠️ Не удалось загрузить исследования</div>
-        <div style="max-width: 600px; line-height: 1.5;">${escapeHtml(message)}</div>
+        <div style="max-width: 650px; line-height: 1.5; font-size: 13px;">${escapeHtml(message)}</div>
       </div>
     `;
   }

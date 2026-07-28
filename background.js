@@ -32,16 +32,16 @@ async function getConfig() {
   });
 }
 
-// Build Authorization header if credentials exist
-function getHeaders(config) {
-  const headers = { 
-    'Accept': 'application/json'
-  };
+// Build Headers object for fetch
+function createFetchHeaders(config) {
+  const headers = new Headers();
+  headers.append('Accept', 'application/json');
+
   const user = config.username !== undefined && config.username !== '' ? config.username : 'orthanc';
   const pass = config.password !== undefined && config.password !== '' ? config.password : 'orthanc';
   if (user || pass) {
     const auth = btoa(`${user}:${pass}`);
-    headers['Authorization'] = `Basic ${auth}`;
+    headers.append('Authorization', `Basic ${auth}`);
   }
   return headers;
 }
@@ -105,15 +105,25 @@ function formatGender(rawSex) {
   return { raw: rawSex, textRu: 'Другой', textEn: 'Other', code: 'O' };
 }
 
-// Try fetching endpoint with candidate base URLs and parsing JSON directly inside
-async function tryFetchEndpoint(baseUrl, path, options = {}) {
+// Try fetching endpoint with candidate base URLs
+async function tryFetchEndpoint(baseUrl, path, config, extraOptions = {}) {
   const cleanBase = normalizeUrl(baseUrl);
   const targetUrl = `${cleanBase}${path}`;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  const headers = createFetchHeaders(config);
 
   try {
-    const res = await fetch(targetUrl, { ...options, signal: controller.signal });
+    const fetchOptions = {
+      method: extraOptions.method || 'GET',
+      headers,
+      cache: 'no-cache',
+      signal: controller.signal
+    };
+    if (extraOptions.body) fetchOptions.body = extraOptions.body;
+
+    const res = await fetch(targetUrl, fetchOptions);
     if (!res.ok) {
       clearTimeout(timeoutId);
       return { ok: false, status: res.status, error: `HTTP ${res.status}`, url: targetUrl };
@@ -123,14 +133,14 @@ async function tryFetchEndpoint(baseUrl, path, options = {}) {
     return { ok: true, status: res.status, data, url: targetUrl };
   } catch (err) {
     clearTimeout(timeoutId);
-    const msg = err.name === 'AbortError' ? 'Превышено время ожидания ответа Orthanc (8 сек)' : err.message;
+    const msg = err.name === 'AbortError' ? 'Превышено время ожидания ответа (10 сек)' : err.message;
     return { ok: false, status: 0, error: msg, url: targetUrl };
   }
 }
 
-// Fetch studies from Orthanc with smart candidate fallback
+// Fetch studies from Orthanc
 async function fetchStudies(config) {
-  const headers = getHeaders(config);
+  config.orthancUrl = normalizeUrl(config.orthancUrl);
   
   const rawCandidates = [
     config.orthancUrl,
@@ -156,30 +166,31 @@ async function fetchStudies(config) {
 
   for (const baseUrl of candidateUrls) {
     // Attempt 1: GET /studies?expand
-    let result = await tryFetchEndpoint(baseUrl, '/studies?expand', { method: 'GET', headers });
+    let result = await tryFetchEndpoint(baseUrl, '/studies?expand', config, { method: 'GET' });
     
     if (result.status === 401) {
-      const fallbackHeaders = { 'Accept': 'application/json', 'Authorization': `Basic ${btoa('orthanc:orthanc')}` };
-      result = await tryFetchEndpoint(baseUrl, '/studies?expand', { method: 'GET', headers: fallbackHeaders });
+      const fallbackConfig = { ...config, username: 'orthanc', password: 'orthanc' };
+      result = await tryFetchEndpoint(baseUrl, '/studies?expand', fallbackConfig, { method: 'GET' });
+      if (result.ok) {
+        chrome.storage.local.set({ planb_wizzard_config: { ...config, orthancUrl: baseUrl, username: 'orthanc', password: 'orthanc' } });
+      }
     }
 
     if (result.ok && result.data) {
       studiesData = result.data;
       successfulUrl = baseUrl;
-      // Auto-save working URL to local storage
-      chrome.storage.local.set({ planb_wizzard_config: { ...config, orthancUrl: baseUrl, username: config.username || 'orthanc', password: config.password || 'orthanc' } });
+      chrome.storage.local.set({ planb_wizzard_config: { ...config, orthancUrl: baseUrl } });
       break;
     }
 
     // Attempt 2: POST /tools/find
-    const postHeaders = { ...headers, 'Content-Type': 'application/json' };
-    const body = JSON.stringify({ Level: 'Study', Query: {}, Expand: true, Limit: config.limit || 50 });
-    result = await tryFetchEndpoint(baseUrl, '/tools/find', { method: 'POST', headers: postHeaders, body });
+    const postBody = JSON.stringify({ Level: 'Study', Query: {}, Expand: true, Limit: config.limit || 50 });
+    result = await tryFetchEndpoint(baseUrl, '/tools/find', config, { method: 'POST', body: postBody });
 
     if (result.ok && result.data) {
       studiesData = result.data;
       successfulUrl = baseUrl;
-      chrome.storage.local.set({ planb_wizzard_config: { ...config, orthancUrl: baseUrl, username: config.username || 'orthanc', password: config.password || 'orthanc' } });
+      chrome.storage.local.set({ planb_wizzard_config: { ...config, orthancUrl: baseUrl } });
       break;
     }
 
@@ -193,7 +204,7 @@ async function fetchStudies(config) {
   if (!studiesData) {
     return {
       success: false,
-      error: `Ошибка подключения: ${lastError}`
+      error: `Ошибка подключения к Orthanc: ${lastError}`
     };
   }
 
@@ -257,24 +268,23 @@ async function fetchStudies(config) {
 async function testConnection(config) {
   const norm = normalizeUrl(config.orthancUrl);
   const candidateUrls = [norm, 'http://192.168.5.155:8042', 'http://192.168.5.155:4242', 'http://localhost:8042'];
-  const headers = getHeaders(config);
 
   for (const baseUrl of candidateUrls) {
-    const result = await tryFetchEndpoint(baseUrl, '/system', { method: 'GET', headers });
+    const result = await tryFetchEndpoint(baseUrl, '/system', config, { method: 'GET' });
     if (result.ok) {
       return { success: true, version: (result.data && result.data.Version) || 'OK', workingUrl: baseUrl };
     }
   }
 
-  return { success: false, error: 'Не удалось подключиться к Orthanc. Проверьте правильность URL и доступность порта.' };
+  return { success: false, error: 'Не удалось подключиться к Orthanc. Проверьте адрес и порт.' };
 }
 
-// Message Listener with guaranteed sendResponse invocation
+// Message Listener with explicit error reporting
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'GET_CONFIG') {
     getConfig()
       .then((cfg) => sendResponse(cfg))
-      .catch((err) => sendResponse({ orthancUrl: 'http://192.168.5.155:8042' }));
+      .catch(() => sendResponse({ orthancUrl: 'http://192.168.5.155:8042' }));
     return true;
   }
 
@@ -298,7 +308,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     getConfig()
       .then((config) => fetchStudies(config))
       .then((result) => sendResponse(result))
-      .catch((err) => sendResponse({ success: false, error: 'Ошибка получения исследований: ' + (err.message || String(err)) }));
+      .catch((err) => sendResponse({ success: false, error: 'Ошибка Service Worker: ' + (err.message || String(err)) }));
     return true;
   }
 });
