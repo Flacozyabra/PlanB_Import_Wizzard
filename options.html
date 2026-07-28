@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Настройки PlanB Orthanc Wizzard</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      margin: 0;
+      padding: 32px;
+      display: flex;
+      justify-content: center;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 32px;
+      width: 100%;
+      max-width: 540px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 0 8px 0;
+      color: #ffffff;
+    }
+    p {
+      color: #94a3b8;
+      font-size: 13px;
+      margin: 0 0 24px 0;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+    input[type="text"], input[type="password"], input[type="number"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 14px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #ffffff;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+    input:focus {
+      border-color: #6366f1;
+    }
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 28px;
+    }
+    button {
+      flex: 1;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+    }
+    .btn-primary {
+      background: #4f46e5;
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background: #4338ca;
+    }
+    .btn-secondary {
+      background: #334155;
+      color: #e2e8f0;
+      border: 1px solid #475569;
+    }
+    .btn-secondary:hover {
+      background: #475569;
+      color: #ffffff;
+    }
+    .status {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+    }
+    .status.success {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      display: block;
+    }
+    .status.error {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Настройки Orthanc Wizzard</h1>
+    <p>Конфигурация подключения к Orthanc DICOM серверу</p>
+
+    <form id="settings-form">
+      <div class="form-group">
+        <label for="orthancUrl">Адрес Orthanc сервера (URL)</label>
+        <input type="text" id="orthancUrl" placeholder="http://192.168.5.155:4242" required />
+      </div>
+
+      <div class="form-group">
+        <label for="username">Логин (если требуется Basic Auth)</label>
+        <input type="text" id="username" placeholder="orthanc" />
+      </div>
+
+      <div class="form-group">
+        <label for="password">Пароль (если требуется Basic Auth)</label>
+        <input type="password" id="password" placeholder="••••••••" />
+      </div>
+
+      <div class="form-group">
+        <label for="limit">Лимит исследований в списке</label>
+        <input type="number" id="limit" value="50" min="10" max="500" />
+      </div>
+
+      <div class="btn-row">
+        <button type="button" id="test-btn" class="btn-secondary">Проверить связь</button>
+        <button type="submit" class="btn-primary">Сохранить</button>
+      </div>
+    </form>
+
+    <div id="status-message" class="status"></div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

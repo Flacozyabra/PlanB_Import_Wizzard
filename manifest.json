@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "PlanB Orthanc Wizzard",
+  "version": "1.0.0",
+  "description": "Автоматическое заполнение данных пациентов в PlanB из КТ-исследований Orthanc",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://192.168.5.155/*",
+    "http://192.168.5.155/*",
+    "http://192.168.5.155:4242/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://192.168.5.155/*",
+        "http://192.168.5.155/*"
+      ],
+      "css": ["modal.css"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "options_page": "options.html",
+  "action": {
+    "default_title": "PlanB Wizzard Settings"
+  }
+}
