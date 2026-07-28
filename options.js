@@ -22,6 +22,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load existing config
   chrome.runtime.sendMessage({ action: 'GET_CONFIG' }, (config) => {
+    if (chrome.runtime.lastError) {
+      // Fallback to local storage if background script was just reloaded
+      chrome.storage.local.get(['planb_wizzard_config'], (result) => {
+        const stored = result.planb_wizzard_config || {};
+        orthancUrlInput.value = stored.orthancUrl || 'http://localhost:8042';
+        usernameInput.value = stored.username || 'orthanc';
+        passwordInput.value = stored.password || 'orthanc';
+        limitInput.value = stored.limit || 50;
+      });
+      return;
+    }
     if (config) {
       orthancUrlInput.value = config.orthancUrl || 'http://localhost:8042';
       usernameInput.value = config.username || 'orthanc';
@@ -43,39 +54,76 @@ document.addEventListener('DOMContentLoaded', () => {
       limit: parseInt(limitInput.value, 10) || 50
     };
 
-    chrome.runtime.sendMessage({ action: 'SET_CONFIG', config }, (res) => {
-      if (res && res.success) {
-        showStatus('Настройки успешно сохранены!', 'success');
-      } else {
-        showStatus('Ошибка при сохранении настроек', 'error');
-      }
+    chrome.storage.local.set({ planb_wizzard_config: config }, () => {
+      showStatus('Настройки успешно сохранены!', 'success');
     });
   });
 
-  // Test Connection
-  testBtn.addEventListener('click', () => {
+  // Direct connection test from options page (independent of service worker state)
+  testBtn.addEventListener('click', async () => {
     const cleanUrl = normalizeUrlInput(orthancUrlInput.value);
     orthancUrlInput.value = cleanUrl;
 
     showStatus('Проверка соединения с Orthanc...', 'success');
-    
-    const config = {
-      orthancUrl: cleanUrl,
-      username: usernameInput.value.trim(),
-      password: passwordInput.value.trim()
-    };
 
-    chrome.runtime.sendMessage({ action: 'TEST_CONNECTION', config }, (res) => {
-      if (chrome.runtime.lastError) {
-        showStatus(`Ошибка расширения: ${chrome.runtime.lastError.message}`, 'error');
-        return;
+    const username = usernameInput.value.trim() || 'orthanc';
+    const password = passwordInput.value.trim() || 'orthanc';
+
+    const headers = { 'Accept': 'application/json' };
+    if (username || password) {
+      headers['Authorization'] = `Basic ${btoa(`${username}:${password}`)}`;
+    }
+
+    const candidateUrls = [cleanUrl];
+    if (cleanUrl.includes(':4242')) {
+      candidateUrls.push(cleanUrl.replace(':4242', ':8042'));
+    } else if (!cleanUrl.includes(':8042')) {
+      candidateUrls.push(cleanUrl + ':8042');
+    }
+
+    let connected = false;
+    let lastError = '';
+
+    for (const targetBase of candidateUrls) {
+      const targetUrl = `${targetBase.replace(/\/$/, '')}/system`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      try {
+        const res = await fetch(targetUrl, { method: 'GET', headers, signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (res.status === 401) {
+          lastError = 'Ошибка 401: Неверный логин или пароль';
+          continue;
+        }
+
+        if (res.ok) {
+          const data = await res.json();
+          showStatus(`Соединение успешно! Orthanc версия: ${data.Version || 'OK'} (${targetBase})`, 'success');
+          connected = true;
+
+          // Save working config automatically
+          const config = {
+            orthancUrl: targetBase,
+            username,
+            password,
+            limit: parseInt(limitInput.value, 10) || 50
+          };
+          chrome.storage.local.set({ planb_wizzard_config: config });
+          break;
+        } else {
+          lastError = `HTTP ${res.status}`;
+        }
+      } catch (err) {
+        clearTimeout(timeoutId);
+        lastError = err.name === 'AbortError' ? 'Превышено время ожидания (4 сек)' : err.message;
       }
-      if (res && res.success) {
-        showStatus(`Соединение успешно! Orthanc версия: ${res.version} (${res.workingUrl})`, 'success');
-      } else {
-        showStatus(`Ошибка соединения: ${res ? res.error : 'Неизвестная ошибка'}`, 'error');
-      }
-    });
+    }
+
+    if (!connected) {
+      showStatus(`Ошибка соединения: ${lastError}`, 'error');
+    }
   });
 
   function showStatus(text, type) {
