@@ -1,6 +1,6 @@
 /**
  * PlanB Orthanc Wizzard - Content Script
- * Injects Wizzard button, handles modal UI, and fills PlanB patient form.
+ * Injects Wizzard button inline next to "+ Добавить пациента", handles modal UI, and fills PlanB patient form.
  */
 
 (function () {
@@ -57,7 +57,7 @@
         <div class="pbw-footer">
           <div class="pbw-footer-info">
             <span class="pbw-status-dot"></span>
-            <span id="pbw-orthanc-status">Orthanc: http://192.168.5.155:8042 (или 4242)</span>
+            <span id="pbw-orthanc-status">Orthanc: http://192.168.5.155:8042</span>
           </div>
           <div id="pbw-count-info">Записей: 0</div>
         </div>
@@ -129,11 +129,6 @@
       <div class="pbw-status-box" style="color: #f87171;">
         <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">⚠️ Ошибка подключения к Orthanc</div>
         <div style="max-width: 600px; line-height: 1.5;">${escapeHtml(message)}</div>
-        <div style="margin-top: 16px; font-size: 13px; color: #94a3b8; line-height: 1.5;">
-          <strong>Возможные причины:</strong><br/>
-          1. Веб-интерфейс Orthanc работает на порту <strong>8042</strong> (вместо DICOM порта 4242). Попробуйте указать <code>http://192.168.5.155:8042</code> в настройках.<br/>
-          2. Проверьте логин и пароль в параметрах расширения (opera://extensions).
-        </div>
       </div>
     `;
   }
@@ -239,35 +234,37 @@
       .replace(/"/g, '&quot;');
   }
 
-  // Inject Wizzard Button into PlanB page
+  // Find PlanB's "+ Добавить пациента" button element
+  function findAddPatientButton() {
+    const candidates = Array.from(document.querySelectorAll('button, a, div, span, [role="button"]'));
+    for (const el of candidates) {
+      if (el.id === 'planb-wizzard-btn' || el.closest('#planb-wizzard-btn')) continue;
+
+      const text = (el.textContent || '').trim().toLowerCase();
+      if (text.includes('добавить пациента') || text.includes('add patient')) {
+        const btn = el.closest('button, a, [role="button"]') || el;
+        if (btn.id !== 'planb-wizzard-btn') return btn;
+      }
+    }
+    return null;
+  }
+
+  // Inject Wizzard Button into PlanB page inline right next to "+ Добавить пациента"
   function injectWizzardButton() {
     if (document.getElementById('planb-wizzard-btn')) return;
 
-    const buttons = Array.from(document.querySelectorAll('button, a, .btn, [role="button"]'));
-    const addPatientBtn = buttons.find((el) => {
-      const text = (el.textContent || '').toLowerCase().trim();
-      return text.includes('добавить пациента') || text.includes('создать пациента') || text.includes('добавить') || text.includes('add patient');
-    });
+    const addPatientBtn = findAddPatientButton();
+    if (!addPatientBtn || !addPatientBtn.parentElement) return;
 
     const wizzardBtn = document.createElement('button');
     wizzardBtn.id = 'planb-wizzard-btn';
     wizzardBtn.className = 'planb-wizzard-btn';
     wizzardBtn.type = 'button';
-    wizzardBtn.innerHTML = `${WIZARD_ICON} <span>Wizzard (из Orthanc)</span>`;
+    wizzardBtn.innerHTML = `${WIZARD_ICON} <span>Wizzard</span>`;
     wizzardBtn.addEventListener('click', openModal);
 
-    if (addPatientBtn && addPatientBtn.parentElement) {
-      addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
-    } else {
-      const container = document.querySelector('header, .toolbar, .content-header, .page-header, table') || document.body;
-      if (container === document.body) {
-        wizzardBtn.style.position = 'fixed';
-        wizzardBtn.style.bottom = '24px';
-        wizzardBtn.style.right = '24px';
-        wizzardBtn.style.zIndex = '9999';
-      }
-      container.appendChild(wizzardBtn);
-    }
+    // Insert directly after "+ Добавить пациента" button
+    addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
   }
 
   // Helper to trigger events on inputs so frameworks (React, Vue, Angular) register changes
@@ -299,13 +296,7 @@
   function applyStudyToPlanB(study) {
     closeModal();
 
-    const buttons = Array.from(document.querySelectorAll('button, a, .btn, [role="button"]'));
-    const addPatientBtn = buttons.find((el) => {
-      if (el.id === 'planb-wizzard-btn') return false;
-      const text = (el.textContent || '').toLowerCase().trim();
-      return text.includes('добавить пациента') || text.includes('создать пациента') || text.includes('добавить') || text.includes('add patient');
-    });
-
+    const addPatientBtn = findAddPatientButton();
     if (addPatientBtn) {
       addPatientBtn.click();
     }
