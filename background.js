@@ -131,7 +131,6 @@ async function fetchStudies(config) {
   const candidateUrls = [config.orthancUrl];
   if (config.orthancUrl.includes(':4242')) {
     candidateUrls.push(config.orthancUrl.replace(':4242', ':8042'));
-    candidateUrls.push(config.orthancUrl.replace(':4242', ''));
   } else if (!config.orthancUrl.includes(':8042')) {
     candidateUrls.push(config.orthancUrl + ':8042');
   }
@@ -253,7 +252,6 @@ async function testConnection(config) {
   const candidateUrls = [config.orthancUrl];
   if (config.orthancUrl.includes(':4242')) {
     candidateUrls.push(config.orthancUrl.replace(':4242', ':8042'));
-    candidateUrls.push(config.orthancUrl.replace(':4242', ''));
   }
 
   const headers = getHeaders(config);
@@ -271,7 +269,7 @@ async function testConnection(config) {
   return { success: false, error: 'Не удалось подключиться к Orthanc. Проверьте правильность URL и доступность порта.' };
 }
 
-// Message Listener
+// Message Listener with proper Manifest V3 async/await wrapping
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'GET_CONFIG') {
     getConfig().then(sendResponse);
@@ -293,9 +291,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'GET_STUDIES') {
-    getConfig().then((config) => {
-      fetchStudies(config).then(sendResponse);
-    });
+    (async () => {
+      const config = await getConfig();
+      const result = await fetchStudies(config);
+      sendResponse(result);
+    })();
     return true;
   }
 });
