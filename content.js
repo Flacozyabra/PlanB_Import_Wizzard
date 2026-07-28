@@ -234,18 +234,41 @@
       .replace(/"/g, '&quot;');
   }
 
-  // Find PlanB's "+ Добавить пациента" button element
+  // Multi-strategy locator to find PlanB's "+ Добавить пациента" button
   function findAddPatientButton() {
-    const candidates = Array.from(document.querySelectorAll('button, a, div, span, p, [role="button"]'));
-    for (const el of candidates) {
+    // Strategy 1: Check all elements for text "добавить пациента" or "добавить"
+    const all = Array.from(document.querySelectorAll('*'));
+    for (const el of all) {
       if (el.id === 'planb-wizzard-btn' || el.closest('#planb-wizzard-btn')) continue;
 
-      const text = (el.textContent || '').trim().toLowerCase();
-      if ((text.includes('добавить') && text.includes('пациент')) || text.includes('add patient') || text.includes('создать пациента')) {
-        const btn = el.closest('button, a, [role="button"], .btn') || el;
-        if (btn.id !== 'planb-wizzard-btn') return btn;
+      const text = (el.innerText || el.textContent || '').trim().toLowerCase();
+      if (text.includes('добавить пациента') || text.includes('add patient') || (text.includes('добавить') && text.includes('пациент'))) {
+        // Find closest button-like clickable parent
+        let current = el;
+        while (current && current !== document.body) {
+          const tag = current.tagName.toLowerCase();
+          const role = current.getAttribute('role');
+          const className = (current.className || '').toString().toLowerCase();
+
+          if (tag === 'button' || tag === 'a' || role === 'button' || className.includes('btn') || className.includes('button')) {
+            if (current.id !== 'planb-wizzard-btn') return current;
+          }
+          current = current.parentElement;
+        }
+        if (el.id !== 'planb-wizzard-btn') return el;
       }
     }
+
+    // Strategy 2: Find search input [placeholder*="ФИО"] and get button next to it
+    const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"], input[placeholder*="пациент"]');
+    if (searchInput) {
+      const container = searchInput.closest('div, form, header, section') || searchInput.parentElement;
+      if (container) {
+        const btn = container.querySelector('button, a, [role="button"], .btn');
+        if (btn && btn.id !== 'planb-wizzard-btn') return btn;
+      }
+    }
+
     return null;
   }
 
@@ -259,34 +282,37 @@
     return wizzardBtn;
   }
 
-  // Inject Wizzard Button inline next to "+ Добавить пациента" (with safe fallback)
+  // Inject Wizzard Button inline right next to "+ Добавить пациента"
   function injectWizzardButton() {
-    let wizzardBtn = document.getElementById('planb-wizzard-btn');
     const addPatientBtn = findAddPatientButton();
+    let wizzardBtn = document.getElementById('planb-wizzard-btn');
 
     if (addPatientBtn && addPatientBtn.parentElement) {
       if (!wizzardBtn) {
         wizzardBtn = createWizzardBtnElement();
       }
 
-      // Ensure it is placed directly after "+ Добавить пациента"
+      // Clear fixed positioning if it was previously floating
+      wizzardBtn.style.position = 'static';
+      wizzardBtn.style.bottom = 'auto';
+      wizzardBtn.style.right = 'auto';
+      wizzardBtn.style.zIndex = '100';
+
+      // Insert directly after "+ Добавить пациента" button in DOM
       if (addPatientBtn.nextSibling !== wizzardBtn) {
-        wizzardBtn.style.position = 'static';
-        wizzardBtn.style.bottom = 'auto';
-        wizzardBtn.style.right = 'auto';
         addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
       }
       return;
     }
 
-    // Fallback if "+ Добавить пациента" button has not yet rendered in DOM
-    if (!wizzardBtn) {
-      wizzardBtn = createWizzardBtnElement();
-      wizzardBtn.style.position = 'fixed';
-      wizzardBtn.style.bottom = '24px';
-      wizzardBtn.style.right = '24px';
-      wizzardBtn.style.zIndex = '99999';
-      document.body.appendChild(wizzardBtn);
+    // If "+ Добавить пациента" is not found in DOM yet, place near search input or top toolbar (do NOT place fixed in corner)
+    const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"]');
+    if (searchInput && searchInput.parentElement) {
+      if (!wizzardBtn) {
+        wizzardBtn = createWizzardBtnElement();
+      }
+      wizzardBtn.style.position = 'static';
+      searchInput.parentElement.insertBefore(wizzardBtn, searchInput.nextSibling);
     }
   }
 
@@ -419,6 +445,14 @@
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
+
+  // Periodically re-check for 5 seconds after page load to catch late SPA renders
+  let checks = 0;
+  const interval = setInterval(() => {
+    injectWizzardButton();
+    checks++;
+    if (checks > 20) clearInterval(interval);
+  }, 250);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', injectWizzardButton);
