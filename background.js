@@ -105,20 +105,25 @@ function formatGender(rawSex) {
   return { raw: rawSex, textRu: 'Другой', textEn: 'Other', code: 'O' };
 }
 
-// Try fetching endpoint with candidate base URLs and 5s timeout guard
+// Try fetching endpoint with candidate base URLs and parsing JSON directly inside
 async function tryFetchEndpoint(baseUrl, path, options = {}) {
   const cleanBase = normalizeUrl(baseUrl);
   const targetUrl = `${cleanBase}${path}`;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   try {
     const res = await fetch(targetUrl, { ...options, signal: controller.signal });
+    if (!res.ok) {
+      clearTimeout(timeoutId);
+      return { ok: false, status: res.status, error: `HTTP ${res.status}`, url: targetUrl };
+    }
+    const data = await res.json();
     clearTimeout(timeoutId);
-    return { ok: res.ok, status: res.status, res, url: targetUrl };
+    return { ok: true, status: res.status, data, url: targetUrl };
   } catch (err) {
     clearTimeout(timeoutId);
-    const msg = err.name === 'AbortError' ? 'Превышено время ожидания (5 сек)' : err.message;
+    const msg = err.name === 'AbortError' ? 'Превышено время ожидания ответа Orthanc (8 сек)' : err.message;
     return { ok: false, status: 0, error: msg, url: targetUrl };
   }
 }
@@ -151,14 +156,10 @@ async function fetchStudies(config) {
       }
     }
 
-    if (result.ok) {
-      try {
-        studiesData = await result.res.json();
-        successfulUrl = baseUrl;
-        break;
-      } catch (e) {
-        lastError = 'Ошибка парсинга JSON: ' + e.message;
-      }
+    if (result.ok && result.data) {
+      studiesData = result.data;
+      successfulUrl = baseUrl;
+      break;
     }
 
     // Attempt 2: POST /tools/find
@@ -166,14 +167,10 @@ async function fetchStudies(config) {
     const body = JSON.stringify({ Level: 'Study', Query: {}, Expand: true, Limit: config.limit || 50 });
     result = await tryFetchEndpoint(baseUrl, '/tools/find', { method: 'POST', headers: postHeaders, body });
 
-    if (result.ok) {
-      try {
-        studiesData = await result.res.json();
-        successfulUrl = baseUrl;
-        break;
-      } catch (e) {
-        lastError = 'Ошибка парсинга JSON: ' + e.message;
-      }
+    if (result.ok && result.data) {
+      studiesData = result.data;
+      successfulUrl = baseUrl;
+      break;
     }
 
     if (result.error) {
@@ -259,20 +256,19 @@ async function testConnection(config) {
   for (const baseUrl of candidateUrls) {
     const result = await tryFetchEndpoint(baseUrl, '/system', { method: 'GET', headers });
     if (result.ok) {
-      try {
-        const data = await result.res.json();
-        return { success: true, version: data.Version || 'OK', workingUrl: baseUrl };
-      } catch (e) {}
+      return { success: true, version: (result.data && result.data.Version) || 'OK', workingUrl: baseUrl };
     }
   }
 
   return { success: false, error: 'Не удалось подключиться к Orthanc. Проверьте правильность URL и доступность порта.' };
 }
 
-// Message Listener with proper Manifest V3 async/await wrapping
+// Message Listener with guaranteed sendResponse invocation
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'GET_CONFIG') {
-    getConfig().then(sendResponse);
+    getConfig()
+      .then((cfg) => sendResponse(cfg))
+      .catch((err) => sendResponse({ orthancUrl: 'http://localhost:8042' }));
     return true;
   }
 
@@ -286,16 +282,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'TEST_CONNECTION') {
-    testConnection(request.config || DEFAULT_CONFIG).then(sendResponse);
+    testConnection(request.config || DEFAULT_CONFIG)
+      .then((res) => sendResponse(res))
+      .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
   }
 
   if (request.action === 'GET_STUDIES') {
-    (async () => {
-      const config = await getConfig();
-      const result = await fetchStudies(config);
-      sendResponse(result);
-    })();
+    getConfig()
+      .then((config) => fetchStudies(config))
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ success: false, error: 'Ошибка получения исследований: ' + (err.message || String(err)) }));
     return true;
   }
 });
