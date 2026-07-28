@@ -235,19 +235,34 @@
       .replace(/"/g, '&quot;');
   }
 
-  // Fast locator to find PlanB's "+ Добавить пациента" button
+  // Smart locator to find PlanB's "+ Добавить пациента" button
   function findAddPatientButton() {
-    const candidates = document.querySelectorAll('button, a, [role="button"], .btn, .button, div');
+    const candidates = document.querySelectorAll('button, a, [role="button"], .btn, .button, span, div, p');
     for (let i = 0; i < candidates.length; i++) {
       const el = candidates[i];
       if (el.id === 'planb-wizzard-btn' || el.closest('#planb-wizzard-btn')) continue;
 
-      const text = (el.innerText || el.textContent || '').trim().toLowerCase();
-      if (text.includes('добавить пациента') || text.includes('add patient') || (text.includes('добавить') && text.includes('пациент'))) {
+      const text = (el.innerText || el.textContent || '').trim();
+      // Ignore root containers with long text
+      if (text.length > 60) continue;
+
+      const lowerText = text.toLowerCase();
+      if (lowerText.includes('добавить пациента') || lowerText.includes('add patient') || (lowerText.includes('добавить') && lowerText.includes('пациент'))) {
         const btn = el.closest('button, a, [role="button"], .btn') || el;
         if (btn && btn.id !== 'planb-wizzard-btn') return btn;
       }
     }
+
+    // Fallback locator by search input proximity
+    const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"], input[placeholder*="пациент"]');
+    if (searchInput) {
+      const container = searchInput.closest('div, form, header, section') || searchInput.parentElement;
+      if (container) {
+        const btn = container.querySelector('button, a, [role="button"], .btn');
+        if (btn && btn.id !== 'planb-wizzard-btn') return btn;
+      }
+    }
+
     return null;
   }
 
@@ -261,23 +276,26 @@
     return wizzardBtn;
   }
 
-  // Inject Wizzard Button inline next to "+ Добавить пациента" without looping
+  // Inject Wizzard Button inline next to "+ Добавить пациента"
   function injectWizzardButton() {
     if (isInjecting) return;
 
-    const existingBtn = document.getElementById('planb-wizzard-btn');
+    let wizzardBtn = document.getElementById('planb-wizzard-btn');
     const addPatientBtn = findAddPatientButton();
 
     if (addPatientBtn && addPatientBtn.parentElement) {
-      // If button already exists and is in the correct location, do nothing
-      if (existingBtn && addPatientBtn.nextSibling === existingBtn) {
+      // If button is already in correct location next to addPatientBtn
+      if (wizzardBtn && addPatientBtn.nextSibling === wizzardBtn) {
         return;
       }
 
       isInjecting = true;
       try {
-        const wizzardBtn = existingBtn || createWizzardBtnElement();
+        if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
         wizzardBtn.style.position = 'static';
+        wizzardBtn.style.bottom = 'auto';
+        wizzardBtn.style.right = 'auto';
+        wizzardBtn.style.zIndex = '100';
         addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
       } finally {
         setTimeout(() => { isInjecting = false; }, 50);
@@ -285,18 +303,33 @@
       return;
     }
 
-    // Fallback: If search input is present
-    if (!existingBtn) {
-      const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"]');
-      if (searchInput && searchInput.parentElement) {
-        isInjecting = true;
-        try {
-          const wizzardBtn = createWizzardBtnElement();
-          wizzardBtn.style.position = 'static';
-          searchInput.parentElement.insertBefore(wizzardBtn, searchInput.nextSibling);
-        } finally {
-          setTimeout(() => { isInjecting = false; }, 50);
-        }
+    // Fallback 1: If search input is present, insert next to search input
+    const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"]');
+    if (searchInput && searchInput.parentElement) {
+      if (wizzardBtn && searchInput.parentElement.contains(wizzardBtn)) return;
+      isInjecting = true;
+      try {
+        if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
+        wizzardBtn.style.position = 'static';
+        searchInput.parentElement.insertBefore(wizzardBtn, searchInput.nextSibling);
+      } finally {
+        setTimeout(() => { isInjecting = false; }, 50);
+      }
+      return;
+    }
+
+    // Fallback 2: Floating button in bottom right if top bar is completely absent
+    if (!wizzardBtn) {
+      isInjecting = true;
+      try {
+        wizzardBtn = createWizzardBtnElement();
+        wizzardBtn.style.position = 'fixed';
+        wizzardBtn.style.bottom = '24px';
+        wizzardBtn.style.right = '24px';
+        wizzardBtn.style.zIndex = '99999';
+        document.body.appendChild(wizzardBtn);
+      } finally {
+        setTimeout(() => { isInjecting = false; }, 50);
       }
     }
   }
