@@ -757,73 +757,122 @@
     return filledAny;
   }
 
-  // Direct and dedicated gender element filler for PlanB
+  // Comprehensive gender field filler — finds field by option content, not label text
   function fillGenderElementDirect(inputEl, sexInfo) {
     if (!sexInfo || !sexInfo.textRu) return false;
-    const targetRu = sexInfo.textRu; // "Мужской" or "Женский"
-    const targetCode = sexInfo.code;   // "M" or "F"
+    const targetRu = sexInfo.textRu.toLowerCase();   // "мужской" or "женский"
+    const targetCode = sexInfo.code.toLowerCase();    // "m" or "f"
+    const isMale = targetCode === 'm';
 
-    // If inputEl is passed and is standard <select>
-    if (inputEl && inputEl.tagName === 'SELECT') {
-      const options = Array.from(inputEl.options);
-      const match = options.find((opt) => {
-        const txt = (opt.textContent || '').toLowerCase();
-        const val = (opt.value || '').toLowerCase();
-        return txt.includes(targetRu.toLowerCase()) || val.includes(targetCode.toLowerCase());
+    // ── Strategy 1: standard <select> elements — find by option content ──────
+    const allSelects = Array.from(document.querySelectorAll('select'));
+    for (const sel of allSelects) {
+      if (sel.closest('#pbw-modal-overlay')) continue;
+      const opts = Array.from(sel.options);
+      // Check if this select has gender-like options
+      const hasGenderOptions = opts.some(o => {
+        const t = (o.textContent || '').toLowerCase();
+        return t.includes('мужск') || t.includes('женск') || t === 'м' || t === 'ж' || t === 'm' || t === 'f';
       });
-      if (match) {
-        inputEl.value = match.value;
-        inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+      if (hasGenderOptions) {
+        const match = opts.find(o => {
+          const t = (o.textContent || '').toLowerCase();
+          const v = (o.value || '').toLowerCase();
+          return t.includes(targetRu) || v === targetCode || v === (isMale ? 'male' : 'female') ||
+                 t === (isMale ? 'м' : 'ж') || t === targetCode;
+        });
+        if (match) {
+          const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set;
+          if (nativeSetter) nativeSetter.call(sel, match.value); else sel.value = match.value;
+          sel.dispatchEvent(new Event('input',  { bubbles: true }));
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        }
+      }
+    }
+
+    // ── Strategy 2: radio buttons with gender values ──────────────────────────
+    const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
+    for (const radio of radios) {
+      if (radio.closest('#pbw-modal-overlay')) continue;
+      const v = (radio.value || '').toLowerCase();
+      const lbl = document.querySelector(`label[for="${radio.id}"]`);
+      const lblTxt = (lbl ? lbl.textContent : (radio.parentElement ? radio.parentElement.textContent : '')).toLowerCase();
+      if (
+        v === targetCode || v === targetRu ||
+        v === (isMale ? 'male' : 'female') ||
+        lblTxt.includes(targetRu) ||
+        (isMale && (v === 'м' || lblTxt.includes('муж'))) ||
+        (!isMale && (v === 'ж' || lblTxt.includes('жен')))
+      ) {
+        radio.checked = true;
+        radio.dispatchEvent(new Event('change', { bubbles: true }));
+        radio.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         return true;
       }
     }
 
-    // If inputEl is standard <input>
-    if (inputEl && inputEl.tagName === 'INPUT' && inputEl.type !== 'radio') {
-      setInputValue(inputEl, targetRu);
+    // ── Strategy 3: custom dropdown — find trigger near label "Пол" ──────────
+    // Walk every element, find a label "Пол*", then look for select/combobox in its neighbourhood
+    const allEls = Array.from(document.querySelectorAll('label, div, span, td, th, p'));
+    for (const el of allEls) {
+      if (el.closest('#pbw-modal-overlay')) continue;
+      const ownTxt = (el.childNodes.length === 1 && el.childNodes[0].nodeType === 3
+        ? el.textContent : (el.getAttribute('data-label') || '')).trim().toLowerCase();
+      if (ownTxt !== 'пол' && ownTxt !== 'пол*' && ownTxt !== 'gender') continue;
+
+      // Sibling / parent container search
+      const searchRoot = el.closest('tr, .form-row, .form-group, .field, .row, fieldset, form') 
+                         || el.parentElement || el;
+
+      // Try select inside container
+      const sel = searchRoot.querySelector('select');
+      if (sel) {
+        const opts = Array.from(sel.options);
+        const match = opts.find(o => {
+          const t = (o.textContent || '').toLowerCase();
+          const v = (o.value || '').toLowerCase();
+          return t.includes(targetRu) || v === targetCode;
+        });
+        if (match) {
+          const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set;
+          if (nativeSetter) nativeSetter.call(sel, match.value); else sel.value = match.value;
+          sel.dispatchEvent(new Event('input',  { bubbles: true }));
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        }
+      }
+
+      // Try custom dropdown combobox trigger
+      const combobox = searchRoot.querySelector('[role="combobox"], [role="listbox"], .v-select, .ant-select, .el-select, .multiselect, [aria-haspopup="listbox"]');
+      if (combobox) {
+        HTMLElement.prototype.click.call(combobox);
+        combobox.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        setTimeout(() => {
+          const options = Array.from(document.querySelectorAll('[role="option"], .v-list-item, .ant-select-item, .el-select-dropdown__item, .multiselect__option, li'));
+          for (const opt of options) {
+            if (opt.closest('#pbw-modal-overlay')) continue;
+            const t = (opt.textContent || '').trim().toLowerCase();
+            if (t.includes(targetRu) || t === (isMale ? 'м' : 'ж')) {
+              HTMLElement.prototype.click.call(opt);
+              opt.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              break;
+            }
+          }
+        }, 150);
+        return true;
+      }
     }
 
-    // Try finding gender field container/dropdown trigger
-    const allContainers = Array.from(document.querySelectorAll('div, label, span, [role="combobox"], [role="listbox"]'));
-    for (const container of allContainers) {
-      const txt = (container.textContent || container.innerText || '').trim().toLowerCase();
-      if (txt === 'пол*' || txt === 'пол' || (txt.startsWith('пол') && txt.length < 8 && !txt.includes('почта') && !txt.includes('область'))) {
-        const parent = container.closest('.form-group, .field, label, div') || container.parentElement || container;
-        
-        const sel = parent.querySelector('select');
-        if (sel) {
-          const opts = Array.from(sel.options);
-          const match = opts.find(o => (o.textContent || '').toLowerCase().includes(targetRu.toLowerCase()) || (o.value || '').toLowerCase().includes(targetCode.toLowerCase()));
-          if (match) {
-            sel.value = match.value;
-            sel.dispatchEvent(new Event('change', { bubbles: true }));
-            return true;
-          }
-        }
-
-        const inp = parent.querySelector('input');
-        if (inp && inp.id !== 'pbw-search-input') {
-          setInputValue(inp, targetRu);
-        }
-
-        // Open custom dropdown & select option
-        const clickTarget = parent.querySelector('[role="combobox"], [role="listbox"], .select, .dropdown, button, div') || parent;
-        if (clickTarget) {
-          try {
-            triggerElementClick(clickTarget);
-            setTimeout(() => {
-              const options = Array.from(document.querySelectorAll('.option, [role="option"], li, div, span, button, a'));
-              for (const opt of options) {
-                const optTxt = (opt.textContent || '').trim().toLowerCase();
-                if (optTxt === targetRu.toLowerCase() || (targetRu.startsWith('Муж') && optTxt === 'мужской') || (targetRu.startsWith('Жен') && optTxt === 'женский')) {
-                  triggerElementClick(opt);
-                  break;
-                }
-              }
-            }, 100);
-            return true;
-          } catch (e) {}
-        }
+    // ── Strategy 4: fallback — any visible option text with gender content ────
+    const allOptions = Array.from(document.querySelectorAll('[role="option"], .v-list-item, .ant-select-item, li, .dropdown-item'));
+    for (const opt of allOptions) {
+      if (opt.closest('#pbw-modal-overlay')) continue;
+      const t = (opt.textContent || '').trim().toLowerCase();
+      if (t === targetRu || t === (isMale ? 'м' : 'ж')) {
+        HTMLElement.prototype.click.call(opt);
+        opt.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        return true;
       }
     }
 
