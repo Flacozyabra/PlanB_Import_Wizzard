@@ -82,6 +82,9 @@
 
   function openModal() {
     createModalDOM();
+    modalContainer.style.display = 'flex';
+    // Force reflow so transition plays
+    modalContainer.getBoundingClientRect();
     modalContainer.classList.add('pbw-active');
     loadStudies(false);
   }
@@ -89,6 +92,8 @@
   function closeModal() {
     if (modalContainer) {
       modalContainer.classList.remove('pbw-active');
+      // Instantly remove from event-interception flow — don't wait for CSS transition
+      modalContainer.style.display = 'none';
     }
   }
 
@@ -625,31 +630,42 @@
   function applyStudyToPlanB(study) {
     console.log('[PlanB Wizzard] Apply study clicked for:', study);
 
-    // 1. Locate PlanB's live native button in DOM before closing modal
+    // 1. Locate PlanB's live native button in DOM BEFORE closing Wizzard
     const addPatientBtn = findAddPatientButton();
+    console.log('[PlanB Wizzard] Add patient button found:', addPatientBtn);
 
-    // 2. Close Wizzard modal
+    // 2. Close Wizzard modal instantly (display:none removes it from event flow)
     closeModal();
 
-    // 3. Execute click immediately AND after 100ms
-    const triggerClick = () => {
-      const liveBtn = findAddPatientButton();
-      if (liveBtn) {
-        console.log('[PlanB Wizzard] Triggering click on live button:', liveBtn);
-        triggerElementClick(liveBtn);
-      }
+    // 3. Click the PlanB button directly using prototype call (bypasses any JS interception)
+    const directClick = (btn) => {
+      if (!btn) return;
+      try { btn.focus(); } catch (e) {}
+      // Use HTMLElement prototype click to avoid any overrides
+      HTMLElement.prototype.click.call(btn);
+      // Also dispatch via prototype for React compatibility
+      const opts = { bubbles: true, cancelable: true, view: window };
+      btn.dispatchEvent(new MouseEvent('click', opts));
+      console.log('[PlanB Wizzard] Clicked:', btn);
     };
 
-    triggerClick();
-    setTimeout(triggerClick, 100);
+    if (addPatientBtn) {
+      directClick(addPatientBtn);
+      // Retry after short delay in case first click was missed
+      setTimeout(() => directClick(addPatientBtn), 150);
+      setTimeout(() => directClick(addPatientBtn), 400);
+    } else {
+      console.warn('[PlanB Wizzard] Add Patient Button not found!');
+    }
 
     // 4. Poll for PlanB modal inputs up to 50 attempts (4 seconds)
     let attempts = 0;
     const checkInterval = setInterval(() => {
       attempts++;
 
-      if (attempts === 3 || attempts === 6 || attempts === 10) {
-        triggerClick();
+      if (attempts === 5 || attempts === 10) {
+        const freshBtn = findAddPatientButton();
+        if (freshBtn) directClick(freshBtn);
       }
 
       const filled = fillStarredFormFields(study);
