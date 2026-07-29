@@ -516,7 +516,11 @@
           }
           if (cs.paddingTop) wizzardBtn.style.setProperty('padding-top', cs.paddingTop, 'important');
           if (cs.paddingBottom) wizzardBtn.style.setProperty('padding-bottom', cs.paddingBottom, 'important');
-          if (cs.borderRadius) wizzardBtn.style.setProperty('border-radius', cs.borderRadius, 'important');
+          if (cs.borderRadius && cs.borderRadius !== '0px' && cs.borderRadius !== '0px 0px 0px 0px') {
+            wizzardBtn.style.setProperty('border-radius', cs.borderRadius, 'important');
+          } else {
+            wizzardBtn.style.setProperty('border-radius', '4px', 'important');
+          }
           if (cs.fontSize) wizzardBtn.style.setProperty('font-size', cs.fontSize, 'important');
           if (cs.fontWeight) wizzardBtn.style.setProperty('font-weight', cs.fontWeight, 'important');
           wizzardBtn.style.setProperty('align-self', cs.alignSelf !== 'auto' ? cs.alignSelf : 'center', 'important');
