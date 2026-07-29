@@ -504,18 +504,23 @@
       try {
         if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
 
-        // Copy exact height, padding, and vertical positioning from native button
+        // Copy exact rendered height and style properties from native button
         try {
+          const rect = addPatientBtn.getBoundingClientRect();
           const cs = window.getComputedStyle(addPatientBtn);
-          if (cs.height && cs.height !== 'auto') {
-            wizzardBtn.style.height = cs.height;
-            wizzardBtn.style.lineHeight = cs.height;
+          if (rect && rect.height > 0) {
+            const h = rect.height + 'px';
+            wizzardBtn.style.setProperty('height', h, 'important');
+            wizzardBtn.style.setProperty('min-height', h, 'important');
+            wizzardBtn.style.setProperty('max-height', h, 'important');
           }
-          if (cs.borderRadius) {
-            wizzardBtn.style.borderRadius = cs.borderRadius;
-          }
-          wizzardBtn.style.alignSelf = cs.alignSelf !== 'auto' ? cs.alignSelf : 'center';
-          wizzardBtn.style.verticalAlign = cs.verticalAlign;
+          if (cs.paddingTop) wizzardBtn.style.setProperty('padding-top', cs.paddingTop, 'important');
+          if (cs.paddingBottom) wizzardBtn.style.setProperty('padding-bottom', cs.paddingBottom, 'important');
+          if (cs.borderRadius) wizzardBtn.style.setProperty('border-radius', cs.borderRadius, 'important');
+          if (cs.fontSize) wizzardBtn.style.setProperty('font-size', cs.fontSize, 'important');
+          if (cs.fontWeight) wizzardBtn.style.setProperty('font-weight', cs.fontWeight, 'important');
+          wizzardBtn.style.setProperty('align-self', cs.alignSelf !== 'auto' ? cs.alignSelf : 'center', 'important');
+          wizzardBtn.style.setProperty('vertical-align', cs.verticalAlign, 'important');
         } catch (e) {}
 
         wizzardBtn.style.position = 'static';
