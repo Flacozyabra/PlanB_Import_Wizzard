@@ -444,7 +444,7 @@
 
   // Smart locator to find PlanB's "+ Добавить пациента" or "+ Создать запись" button
   function findAddPatientButton() {
-    if (planbNativeAddButton && document.body.contains(planbNativeAddButton)) {
+    if (planbNativeAddButton && document.body.contains(planbNativeAddButton) && planbNativeAddButton.id !== 'planb-wizzard-btn') {
       return planbNativeAddButton;
     }
 
@@ -500,7 +500,7 @@
     return wizzardBtn;
   }
 
-  // Inject Wizzard Button inline next to "+ Добавить пациента"
+  // Inject Wizzard Button ALWAYS inline in the toolbar right next to PlanB's button
   function injectWizzardButton() {
     if (isInjecting) return;
 
@@ -517,10 +517,15 @@
       isInjecting = true;
       try {
         if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
+
+        // Always inline placement inside top toolbar
         wizzardBtn.style.position = 'static';
         wizzardBtn.style.bottom = 'auto';
         wizzardBtn.style.right = 'auto';
         wizzardBtn.style.zIndex = '100';
+        wizzardBtn.style.marginRight = '8px';
+        wizzardBtn.style.marginLeft = '8px';
+
         addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
       } finally {
         setTimeout(() => { isInjecting = false; }, 50);
@@ -528,32 +533,23 @@
       return;
     }
 
-    const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"]');
+    const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"], input[placeholder*="пациент"], input[placeholder*="поиск"]');
     if (searchInput && searchInput.parentElement) {
       if (wizzardBtn && searchInput.parentElement.contains(wizzardBtn)) return;
       isInjecting = true;
       try {
         if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
         wizzardBtn.style.position = 'static';
+        wizzardBtn.style.bottom = 'auto';
+        wizzardBtn.style.right = 'auto';
+        wizzardBtn.style.zIndex = '100';
+        wizzardBtn.style.marginRight = '8px';
+        wizzardBtn.style.marginLeft = '8px';
         searchInput.parentElement.insertBefore(wizzardBtn, searchInput.nextSibling);
       } finally {
         setTimeout(() => { isInjecting = false; }, 50);
       }
       return;
-    }
-
-    if (!wizzardBtn) {
-      isInjecting = true;
-      try {
-        wizzardBtn = createWizzardBtnElement();
-        wizzardBtn.style.position = 'fixed';
-        wizzardBtn.style.bottom = '24px';
-        wizzardBtn.style.right = '24px';
-        wizzardBtn.style.zIndex = '99999';
-        document.body.appendChild(wizzardBtn);
-      } finally {
-        setTimeout(() => { isInjecting = false; }, 50);
-      }
     }
   }
 
@@ -621,26 +617,28 @@
   function applyStudyToPlanB(study) {
     console.log('[PlanB Wizzard] Apply study clicked for:', study);
 
-    // 1. Close Wizzard modal first
+    // 1. Get PlanB native button BEFORE closing Wizzard modal so reference is guaranteed
+    const addPatientBtn = findAddPatientButton();
+
+    // 2. Close Wizzard modal
     closeModal();
 
-    // 2. Wait 200ms for Wizzard modal backdrop overlay to completely unmount/hide
+    // 3. Wait 150ms for Wizzard modal backdrop overlay to completely unmount/hide
     setTimeout(() => {
-      const addPatientBtn = findAddPatientButton();
       if (addPatientBtn) {
-        console.log('[PlanB Wizzard] Triggering click on PlanB button:', addPatientBtn);
+        console.log('[PlanB Wizzard] Triggering click on PlanB native button:', addPatientBtn);
         triggerElementClick(addPatientBtn);
       } else {
         console.warn('[PlanB Wizzard] Add Patient Button not found in DOM.');
       }
 
-      // 3. Poll for PlanB modal inputs up to 50 attempts (4 seconds)
+      // 4. Poll for PlanB modal inputs up to 50 attempts (4 seconds)
       let attempts = 0;
       const checkInterval = setInterval(() => {
         attempts++;
 
-        // Retry clicking button on attempt 2, 5, 9, 14 if no fields have filled yet
-        if ((attempts === 2 || attempts === 5 || attempts === 9 || attempts === 14) && addPatientBtn) {
+        // Retry clicking button on attempt 2, 5, 9 if no fields have filled yet
+        if ((attempts === 2 || attempts === 5 || attempts === 9) && addPatientBtn) {
           triggerElementClick(addPatientBtn);
         }
 
@@ -650,7 +648,7 @@
           clearInterval(checkInterval);
         }
       }, 80);
-    }, 200);
+    }, 150);
   }
 
   // Populate starred fields from DICOM tags
