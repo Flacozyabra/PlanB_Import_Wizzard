@@ -452,7 +452,13 @@
       if (text.length > 60) continue;
 
       const lowerText = text.toLowerCase();
-      if (lowerText.includes('добавить пациента') || lowerText.includes('add patient') || (lowerText.includes('добавить') && lowerText.includes('пациент'))) {
+      if (
+        lowerText.includes('добавить пациента') ||
+        lowerText.includes('создать запись') ||
+        lowerText.includes('пациент') ||
+        lowerText.includes('add patient') ||
+        (lowerText.includes('добавить') && (lowerText.includes('пациент') || lowerText.includes('запись')))
+      ) {
         const btn = el.closest('button, a, [role="button"], .btn') || el;
         if (btn && btn.id !== 'planb-wizzard-btn') return btn;
       }
@@ -535,11 +541,30 @@
     }
   }
 
+  // Trigger MouseEvents + Click to activate React/Vue handlers
+  function triggerElementClick(el) {
+    if (!el) return;
+    try {
+      el.focus();
+    } catch (e) {}
+
+    const opts = { bubbles: true, cancelable: true, view: window };
+    el.dispatchEvent(new MouseEvent('mousedown', opts));
+    el.dispatchEvent(new MouseEvent('mouseup', opts));
+    el.dispatchEvent(new MouseEvent('click', opts));
+
+    if (typeof el.click === 'function') {
+      el.click();
+    }
+  }
+
   // Helper to trigger full React / Vue / Angular input events
   function setInputValue(input, value) {
     if (!input || value === undefined || value === null) return;
 
-    input.focus();
+    try {
+      input.focus();
+    } catch (e) {}
 
     const nativeSetter = Object.getOwnPropertyDescriptor(
       input.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype,
@@ -570,58 +595,49 @@
   function applyStudyToPlanB(study) {
     closeModal();
 
-    // 1. Click "+ Добавить пациента" in PlanB
+    // 1. Click "+ Добавить пациента" / "+ Создать запись" button in PlanB
     const addPatientBtn = findAddPatientButton();
     if (addPatientBtn) {
-      addPatientBtn.click();
+      console.log('[PlanB Wizzard] Clicking Add Patient Button:', addPatientBtn);
+      triggerElementClick(addPatientBtn);
+    } else {
+      console.warn('[PlanB Wizzard] Add Patient Button not found in DOM.');
     }
 
-    // 2. Poll for modal dialog and populate fields with asterisks
+    // 2. Poll for modal inputs up to 40 attempts (4 seconds)
     let attempts = 0;
     const checkInterval = setInterval(() => {
       attempts++;
 
-      const isModalVisible = document.querySelector('.modal, [role="dialog"], form, .popup, .dialog');
-      const lastNameInput = findInputByLabelOrPlaceholder(['фамилия', 'фамилия*']);
+      const allInputs = document.querySelectorAll('input, select, textarea');
+      let foundStarredInput = null;
 
-      if (lastNameInput || isModalVisible || attempts > 20) {
-        clearInterval(checkInterval);
-        fillStarredFormFields(study);
-      }
-    }, 150);
-  }
-
-  // Universal helper to find an input element by placeholder or associated label/parent text
-  function findInputByLabelOrPlaceholder(keywords) {
-    const allInputs = Array.from(document.querySelectorAll('input, textarea, select'));
-
-    for (const input of allInputs) {
-      if (input.type === 'hidden' || input.type === 'submit' || input.type === 'button') continue;
-
-      const ph = (input.placeholder || '').toLowerCase();
-      const name = (input.name || '').toLowerCase();
-      const id = (input.id || '').toLowerCase();
-
-      let labelText = '';
-      if (input.id) {
-        const lbl = document.querySelector(`label[for="${input.id}"]`);
-        if (lbl) labelText = (lbl.textContent || '').toLowerCase();
-      }
-      if (!labelText && input.parentElement) {
-        labelText = (input.parentElement.textContent || '').toLowerCase();
-      }
-
-      const combinedText = `${ph} ${name} ${id} ${labelText}`;
-
-      for (const kw of keywords) {
-        const cleanKw = kw.toLowerCase().replace('*', '');
-        if (ph.includes(cleanKw) || labelText.includes(cleanKw) || name.includes(cleanKw) || id.includes(cleanKw)) {
-          return input;
+      for (const input of allInputs) {
+        const ph = (input.placeholder || '').toLowerCase();
+        const labelText = input.parentElement ? (input.parentElement.textContent || '').toLowerCase() : '';
+        if (ph.includes('фамил') || ph.includes('имя') || labelText.includes('фамил') || labelText.includes('имя')) {
+          foundStarredInput = input;
+          break;
         }
       }
-    }
 
-    return null;
+      if (foundStarredInput) {
+        clearInterval(checkInterval);
+        console.log('[PlanB Wizzard] Found PlanB modal input. Filling fields...');
+        fillStarredFormFields(study);
+        return;
+      }
+
+      // Retry clicking button on attempt 5 & 10 if modal hasn't opened yet
+      if ((attempts === 5 || attempts === 10) && addPatientBtn) {
+        triggerElementClick(addPatientBtn);
+      }
+
+      if (attempts >= 40) {
+        clearInterval(checkInterval);
+        console.warn('[PlanB Wizzard] Timed out waiting for PlanB modal inputs.');
+      }
+    }, 100);
   }
 
   // Populate starred fields from DICOM tags
@@ -716,17 +732,19 @@
     // Case 3: Custom React/Vue dropdown container
     const container = element.closest('.select, .dropdown, [role="combobox"], [role="listbox"], div') || element.parentElement;
     if (container) {
-      container.click();
-      setTimeout(() => {
-        const options = document.querySelectorAll('.option, [role="option"], li, div, span');
-        for (const opt of options) {
-          const txt = (opt.textContent || '').trim().toLowerCase();
-          if (txt === targetText.toLowerCase() || (targetText.startsWith('Муж') && txt.includes('муж')) || (targetText.startsWith('Жен') && txt.includes('жен'))) {
-            opt.click();
-            break;
+      try {
+        triggerElementClick(container);
+        setTimeout(() => {
+          const options = document.querySelectorAll('.option, [role="option"], li, div, span');
+          for (const opt of options) {
+            const txt = (opt.textContent || '').trim().toLowerCase();
+            if (txt === targetText.toLowerCase() || (targetText.startsWith('Муж') && txt.includes('муж')) || (targetText.startsWith('Жен') && txt.includes('жен'))) {
+              triggerElementClick(opt);
+              break;
+            }
           }
-        }
-      }, 150);
+        }, 150);
+      } catch (e) {}
     }
   }
 
