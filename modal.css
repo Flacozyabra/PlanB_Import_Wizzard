@@ -61,6 +61,7 @@
   justify-content: center;
   opacity: 0;
   visibility: hidden;
+  pointer-events: none; /* CRITICAL: don't block clicks on PlanB UI when Wizzard is closed */
   transition: opacity 0.25s ease, visibility 0.25s ease;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
@@ -68,6 +69,7 @@
 .pbw-overlay.pbw-active {
   opacity: 1;
   visibility: visible;
+  pointer-events: all; /* Restore click interception only when Wizzard is open */
 }
 
 /* Modal Window */
