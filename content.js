@@ -10,6 +10,7 @@
   let allStudies = [];
   let modalContainer = null;
   let isInjecting = false;
+  let planbNativeAddButton = null; // Cached reference to PlanB's native button
 
   // SVG Icons
   const WIZARD_ICON = `<svg viewBox="0 0 24 24"><path d="M7.5 5.6L5 7l1.4-2.5L5 2l2.5 1.4L10 2 8.6 4.5 10 7 7.5 5.6zm12 9.8l-2.5 1.4 1.4 2.5-2.5-1.4-2.5 1.4 1.4-2.5-1.4-2.5 2.5 1.4 2.5-1.4-1.4 2.5 1.4 2.5zM19.5 2l-1.4 2.5 2.5 1.4-2.5 1.4 1.4 2.5-2.5-1.4-2.5 1.4 1.4-2.5-1.4-2.5 2.5 1.4L19.5 2zM9.24 10.19l7.07-7.07c.39-.39 1.02-.39 1.41 0l2.83 2.83c.39.39.39 1.02 0 1.41l-7.07 7.07-4.24-4.24zm-1.41 1.42l4.24 4.24-6.36 6.36H1.5v-4.24l6.33-6.36z"/></svg>`;
@@ -443,6 +444,10 @@
 
   // Smart locator to find PlanB's "+ Добавить пациента" or "+ Создать запись" button
   function findAddPatientButton() {
+    if (planbNativeAddButton && document.body.contains(planbNativeAddButton)) {
+      return planbNativeAddButton;
+    }
+
     const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], .btn, .button, span, div, p'));
     for (let i = 0; i < candidates.length; i++) {
       const el = candidates[i];
@@ -463,7 +468,10 @@
         (lowerText.includes('запись') && (lowerText.includes('добавить') || lowerText.includes('создать') || lowerText.includes('+')))
       ) {
         const btn = el.closest('button, a, [role="button"], .btn') || el;
-        if (btn && btn.id !== 'planb-wizzard-btn') return btn;
+        if (btn && btn.id !== 'planb-wizzard-btn') {
+          planbNativeAddButton = btn;
+          return btn;
+        }
       }
     }
 
@@ -472,7 +480,10 @@
       const container = searchInput.closest('div, form, header, nav, section') || searchInput.parentElement;
       if (container) {
         const btn = container.querySelector('button:not(#planb-wizzard-btn), a:not(#planb-wizzard-btn)');
-        if (btn) return btn;
+        if (btn) {
+          planbNativeAddButton = btn;
+          return btn;
+        }
       }
     }
 
@@ -497,6 +508,8 @@
     const addPatientBtn = findAddPatientButton();
 
     if (addPatientBtn && addPatientBtn.parentElement) {
+      planbNativeAddButton = addPatientBtn; // Cache PlanB button reference!
+
       if (wizzardBtn && addPatientBtn.nextSibling === wizzardBtn) {
         return;
       }
@@ -611,7 +624,7 @@
     // 1. Close Wizzard modal first
     closeModal();
 
-    // 2. Wait 150ms for Wizzard modal backdrop overlay to completely unmount/hide
+    // 2. Wait 200ms for Wizzard modal backdrop overlay to completely unmount/hide
     setTimeout(() => {
       const addPatientBtn = findAddPatientButton();
       if (addPatientBtn) {
@@ -621,28 +634,28 @@
         console.warn('[PlanB Wizzard] Add Patient Button not found in DOM.');
       }
 
-      // 3. Poll for PlanB modal inputs up to 40 attempts (4 seconds)
+      // 3. Poll for PlanB modal inputs up to 50 attempts (4 seconds)
       let attempts = 0;
       const checkInterval = setInterval(() => {
         attempts++;
 
-        // Retry clicking button on attempt 3, 7, 12 if no fields have filled yet
-        if ((attempts === 3 || attempts === 7 || attempts === 12) && addPatientBtn) {
+        // Retry clicking button on attempt 2, 5, 9, 14 if no fields have filled yet
+        if ((attempts === 2 || attempts === 5 || attempts === 9 || attempts === 14) && addPatientBtn) {
           triggerElementClick(addPatientBtn);
         }
 
         const filled = fillStarredFormFields(study);
-        if (filled || attempts >= 40) {
+        if (filled || attempts >= 50) {
           console.log('[PlanB Wizzard] Polling finished. Filled:', filled);
           clearInterval(checkInterval);
         }
-      }, 100);
-    }, 150);
+      }, 80);
+    }, 200);
   }
 
   // Populate starred fields from DICOM tags
   function fillStarredFormFields(study) {
-    const allInputs = Array.from(document.querySelectorAll('input, select, textarea'));
+    const allInputs = Array.from(document.querySelectorAll('input, select, textarea, div[placeholder], span[placeholder]'));
     if (allInputs.length === 0) return false;
 
     let filledAny = false;
@@ -650,7 +663,7 @@
     allInputs.forEach((input) => {
       if (input.id === 'pbw-search-input' || input.type === 'hidden') return;
 
-      const ph = (input.placeholder || '').toLowerCase();
+      const ph = (input.placeholder || input.getAttribute('placeholder') || '').toLowerCase();
       const name = (input.name || '').toLowerCase();
       const id = (input.id || '').toLowerCase();
 
@@ -668,29 +681,31 @@
       // 1. Фамилия*
       if (combinedText.includes('фамил')) {
         const val = study.patientName.lastName || study.patientName.fullName || '';
-        if (val) { setInputValue(input, val); filledAny = true; }
+        if (val && input.tagName === 'INPUT') { setInputValue(input, val); filledAny = true; }
       }
 
       // 2. Имя* (excluding Фамилия / Отчество / ФИО)
       else if (combinedText.includes('имя') && !combinedText.includes('фамил') && !combinedText.includes('отчеств') && !combinedText.includes('фио')) {
         const val = study.patientName.firstName || '';
-        if (val) { setInputValue(input, val); filledAny = true; }
+        if (val && input.tagName === 'INPUT') { setInputValue(input, val); filledAny = true; }
       }
 
       // 3. Отчество (optional)
       else if (combinedText.includes('отчеств')) {
         const val = study.patientName.middleName || '';
-        if (val) { setInputValue(input, val); filledAny = true; }
+        if (val && input.tagName === 'INPUT') { setInputValue(input, val); filledAny = true; }
       }
 
       // 4. Дата рождения*
       else if (combinedText.includes('рожд') || combinedText.includes('birth') || combinedText.includes('dob')) {
-        if (input.type === 'date') {
-          if (study.patientBirthDate.iso) { setInputValue(input, study.patientBirthDate.iso); filledAny = true; }
-        } else {
-          if (study.patientBirthDate.ru || study.patientBirthDate.iso) {
-            setInputValue(input, study.patientBirthDate.ru || study.patientBirthDate.iso);
-            filledAny = true;
+        if (input.tagName === 'INPUT') {
+          if (input.type === 'date') {
+            if (study.patientBirthDate.iso) { setInputValue(input, study.patientBirthDate.iso); filledAny = true; }
+          } else {
+            if (study.patientBirthDate.ru || study.patientBirthDate.iso) {
+              setInputValue(input, study.patientBirthDate.ru || study.patientBirthDate.iso);
+              filledAny = true;
+            }
           }
         }
       }
@@ -698,84 +713,96 @@
       // 5. ID*
       else if (combinedText.includes('id*') || (combinedText.includes('id') && !combinedText.includes('снилс') && !combinedText.includes('телефон'))) {
         const val = study.patientId || '';
-        if (val) { setInputValue(input, val); filledAny = true; }
+        if (val && input.tagName === 'INPUT') { setInputValue(input, val); filledAny = true; }
+      }
+
+      // 6. Пол*
+      else if (combinedText.includes('пол*') || (combinedText.includes('пол') && !combinedText.includes('почта') && !combinedText.includes('область'))) {
+        if (fillGenderElementDirect(input, study.patientSex)) {
+          filledAny = true;
+        }
       }
     });
 
-    // 6. Dedicated PlanB Gender field handler
-    if (fillGenderFieldDedicated(study.patientSex)) {
+    // Fallback gender search if not filled above
+    if (fillGenderElementDirect(null, study.patientSex)) {
       filledAny = true;
     }
 
     return filledAny;
   }
 
-  // Dedicated PlanB Gender field handler for custom dropdowns / selects / radio buttons
-  function fillGenderFieldDedicated(sexInfo) {
+  // Direct and dedicated gender element filler for PlanB
+  function fillGenderElementDirect(inputEl, sexInfo) {
     if (!sexInfo || !sexInfo.textRu) return false;
     const targetRu = sexInfo.textRu; // "Мужской" or "Женский"
     const targetCode = sexInfo.code;   // "M" or "F"
 
-    let filled = false;
+    // If inputEl is passed and is standard <select>
+    if (inputEl && inputEl.tagName === 'SELECT') {
+      const options = Array.from(inputEl.options);
+      const match = options.find((opt) => {
+        const txt = (opt.textContent || '').toLowerCase();
+        const val = (opt.value || '').toLowerCase();
+        return txt.includes(targetRu.toLowerCase()) || val.includes(targetCode.toLowerCase());
+      });
+      if (match) {
+        inputEl.value = match.value;
+        inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+    }
 
-    // Scan all labels, inputs, selects, and dropdown containers
-    const candidates = Array.from(document.querySelectorAll('label, div, span, p, [role="combobox"], [role="listbox"], select, input'));
+    // If inputEl is standard <input>
+    if (inputEl && inputEl.tagName === 'INPUT' && inputEl.type !== 'radio') {
+      setInputValue(inputEl, targetRu);
+    }
 
-    for (const el of candidates) {
-      const ph = (el.placeholder || '').toLowerCase();
-      const txt = (el.textContent || el.innerText || '').trim().toLowerCase();
-
-      if (ph.includes('пол') || txt === 'пол*' || txt === 'пол' || (txt.startsWith('пол') && txt.length < 8 && !txt.includes('пользователь') && !txt.includes('поликлиника'))) {
-        const container = el.closest('.form-group, .field, label, div') || el.parentElement || el;
-
-        // Scenario A: Standard <select> inside container
-        const sel = container.querySelector('select') || (el.tagName === 'SELECT' ? el : null);
+    // Try finding gender field container/dropdown trigger
+    const allContainers = Array.from(document.querySelectorAll('div, label, span, [role="combobox"], [role="listbox"]'));
+    for (const container of allContainers) {
+      const txt = (container.textContent || container.innerText || '').trim().toLowerCase();
+      if (txt === 'пол*' || txt === 'пол' || (txt.startsWith('пол') && txt.length < 8 && !txt.includes('почта') && !txt.includes('область'))) {
+        const parent = container.closest('.form-group, .field, label, div') || container.parentElement || container;
+        
+        const sel = parent.querySelector('select');
         if (sel) {
-          const options = Array.from(sel.options);
-          const match = options.find((opt) => {
-            const optTxt = (opt.textContent || '').toLowerCase();
-            const optVal = (opt.value || '').toLowerCase();
-            return optTxt.includes(targetRu.toLowerCase()) || optVal.includes(targetCode.toLowerCase());
-          });
+          const opts = Array.from(sel.options);
+          const match = opts.find(o => (o.textContent || '').toLowerCase().includes(targetRu.toLowerCase()) || (o.value || '').toLowerCase().includes(targetCode.toLowerCase()));
           if (match) {
             sel.value = match.value;
             sel.dispatchEvent(new Event('change', { bubbles: true }));
-            filled = true;
-            break;
+            return true;
           }
         }
 
-        // Scenario B: Input inside container
-        const inp = container.querySelector('input') || (el.tagName === 'INPUT' ? el : null);
+        const inp = parent.querySelector('input');
         if (inp && inp.id !== 'pbw-search-input') {
           setInputValue(inp, targetRu);
-          filled = true;
         }
 
-        // Scenario C: Custom React/Vue dropdown trigger (Click to open list, then click option)
-        const clickTarget = container.querySelector('[role="combobox"], [role="listbox"], .select, .dropdown, button, div') || container;
+        // Open custom dropdown & select option
+        const clickTarget = parent.querySelector('[role="combobox"], [role="listbox"], .select, .dropdown, button, div') || parent;
         if (clickTarget) {
           try {
             triggerElementClick(clickTarget);
             setTimeout(() => {
-              const options = Array.from(document.querySelectorAll('.option, [role="option"], li, div, span, button'));
+              const options = Array.from(document.querySelectorAll('.option, [role="option"], li, div, span, button, a'));
               for (const opt of options) {
                 const optTxt = (opt.textContent || '').trim().toLowerCase();
-                if (optTxt === targetRu.toLowerCase() || (targetRu.startsWith('Муж') && optTxt.includes('муж')) || (targetText.startsWith('Жен') && optTxt.includes('жен'))) {
+                if (optTxt === targetRu.toLowerCase() || (targetRu.startsWith('Муж') && optTxt === 'мужской') || (targetRu.startsWith('Жен') && optTxt === 'женский')) {
                   triggerElementClick(opt);
                   break;
                 }
               }
             }, 100);
-            filled = true;
+            return true;
           } catch (e) {}
         }
-
-        if (filled) break;
       }
     }
 
-    return filled;
+    return false;
   }
 
   // Observer to inject button as soon as DOM loads or updates, with debouncing
