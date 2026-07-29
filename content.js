@@ -757,12 +757,59 @@
     return filledAny;
   }
 
-  // Comprehensive gender field filler — finds field by option content, not label text
+  // Comprehensive gender field filler — MUI Select aware
   function fillGenderElementDirect(inputEl, sexInfo) {
     if (!sexInfo || !sexInfo.textRu) return false;
     const targetRu = sexInfo.textRu.toLowerCase();   // "мужской" or "женский"
     const targetCode = sexInfo.code.toLowerCase();    // "m" or "f"
     const isMale = targetCode === 'm';
+
+    // ── Strategy 0: MUI Select (Material-UI) — id="genderId" or class MuiSelect-select ──
+    // MUI opens on mousedown, not click. Options appear in a portal ul[role="listbox"]
+    const muiSelect = document.querySelector('#genderId, .MuiSelect-select[aria-haspopup="listbox"], div[role="button"][aria-haspopup="listbox"]');
+    if (muiSelect && !muiSelect.closest('#pbw-modal-overlay')) {
+      const openAndPick = () => {
+        // Fire mousedown to open the MUI dropdown
+        muiSelect.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+        muiSelect.dispatchEvent(new MouseEvent('mouseup',   { bubbles: true, cancelable: true, view: window }));
+        muiSelect.dispatchEvent(new MouseEvent('click',     { bubbles: true, cancelable: true, view: window }));
+
+        // Wait for the listbox portal to render, then click the matching option
+        setTimeout(() => {
+          const listbox = document.querySelector('ul[role="listbox"]');
+          if (listbox) {
+            const options = Array.from(listbox.querySelectorAll('li[role="option"], li'));
+            for (const opt of options) {
+              const t = (opt.textContent || '').trim().toLowerCase();
+              if (t === targetRu || (isMale && t === 'мужской') || (!isMale && t === 'женский')) {
+                opt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                opt.dispatchEvent(new MouseEvent('mouseup',   { bubbles: true, cancelable: true, view: window }));
+                opt.dispatchEvent(new MouseEvent('click',     { bubbles: true, cancelable: true, view: window }));
+                return;
+              }
+            }
+          } else {
+            // Retry once more if listbox not yet rendered
+            setTimeout(() => {
+              const lb = document.querySelector('ul[role="listbox"]');
+              if (!lb) return;
+              const opts = Array.from(lb.querySelectorAll('li[role="option"], li'));
+              for (const opt of opts) {
+                const t = (opt.textContent || '').trim().toLowerCase();
+                if (t === targetRu || (isMale && t === 'мужской') || (!isMale && t === 'женский')) {
+                  opt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                  opt.dispatchEvent(new MouseEvent('click',     { bubbles: true, cancelable: true, view: window }));
+                  return;
+                }
+              }
+            }, 200);
+          }
+        }, 120);
+      };
+
+      openAndPick();
+      return true;
+    }
 
     // ── Strategy 1: standard <select> elements — find by option content ──────
     const allSelects = Array.from(document.querySelectorAll('select'));
