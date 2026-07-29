@@ -607,33 +607,37 @@
   // Action on clicking "Выбрать" next to a patient in Wizzard
   function applyStudyToPlanB(study) {
     console.log('[PlanB Wizzard] Apply study clicked for:', study);
+
+    // 1. Close Wizzard modal first
     closeModal();
 
-    // 1. Click "+ Добавить пациента" / "+ Создать запись" button in PlanB
-    const addPatientBtn = findAddPatientButton();
-    if (addPatientBtn) {
-      console.log('[PlanB Wizzard] Triggering multi-target click on:', addPatientBtn);
-      triggerElementClick(addPatientBtn);
-    } else {
-      console.warn('[PlanB Wizzard] Add Patient Button not found in DOM.');
-    }
-
-    // 2. Poll for modal inputs up to 50 attempts (4 seconds)
-    let attempts = 0;
-    const checkInterval = setInterval(() => {
-      attempts++;
-
-      // Retry clicking button on attempt 3, 7, 12 if no fields have filled yet
-      if ((attempts === 3 || attempts === 7 || attempts === 12) && addPatientBtn) {
+    // 2. Wait 150ms for Wizzard modal backdrop overlay to completely unmount/hide
+    setTimeout(() => {
+      const addPatientBtn = findAddPatientButton();
+      if (addPatientBtn) {
+        console.log('[PlanB Wizzard] Triggering click on PlanB button:', addPatientBtn);
         triggerElementClick(addPatientBtn);
+      } else {
+        console.warn('[PlanB Wizzard] Add Patient Button not found in DOM.');
       }
 
-      const filled = fillStarredFormFields(study);
-      if (filled || attempts >= 50) {
-        console.log('[PlanB Wizzard] Polling finished. Filled:', filled);
-        clearInterval(checkInterval);
-      }
-    }, 80);
+      // 3. Poll for PlanB modal inputs up to 40 attempts (4 seconds)
+      let attempts = 0;
+      const checkInterval = setInterval(() => {
+        attempts++;
+
+        // Retry clicking button on attempt 3, 7, 12 if no fields have filled yet
+        if ((attempts === 3 || attempts === 7 || attempts === 12) && addPatientBtn) {
+          triggerElementClick(addPatientBtn);
+        }
+
+        const filled = fillStarredFormFields(study);
+        if (filled || attempts >= 40) {
+          console.log('[PlanB Wizzard] Polling finished. Filled:', filled);
+          clearInterval(checkInterval);
+        }
+      }, 100);
+    }, 150);
   }
 
   // Populate starred fields from DICOM tags
@@ -644,7 +648,6 @@
     let filledAny = false;
 
     allInputs.forEach((input) => {
-      // Ignore Wizzard search or hidden elements
       if (input.id === 'pbw-search-input' || input.type === 'hidden') return;
 
       const ph = (input.placeholder || '').toLowerCase();
@@ -697,60 +700,82 @@
         const val = study.patientId || '';
         if (val) { setInputValue(input, val); filledAny = true; }
       }
-
-      // 6. Пол* (Dropdown or Select or Radio)
-      else if (combinedText.includes('пол*') || combinedText.includes('пол')) {
-        fillGenderField(input, study.patientSex);
-        filledAny = true;
-      }
     });
+
+    // 6. Dedicated PlanB Gender field handler
+    if (fillGenderFieldDedicated(study.patientSex)) {
+      filledAny = true;
+    }
 
     return filledAny;
   }
 
-  // Smart handler for Gender dropdowns / selects / radio buttons
-  function fillGenderField(element, sexInfo) {
-    if (!sexInfo || !sexInfo.textRu) return;
-    const targetText = sexInfo.textRu; // "Мужской" or "Женский"
+  // Dedicated PlanB Gender field handler for custom dropdowns / selects / radio buttons
+  function fillGenderFieldDedicated(sexInfo) {
+    if (!sexInfo || !sexInfo.textRu) return false;
+    const targetRu = sexInfo.textRu; // "Мужской" or "Женский"
     const targetCode = sexInfo.code;   // "M" or "F"
 
-    // Case 1: Standard <select>
-    if (element.tagName === 'SELECT') {
-      const options = Array.from(element.options);
-      const match = options.find((opt) => {
-        const txt = (opt.textContent || '').toLowerCase();
-        const val = (opt.value || '').toLowerCase();
-        return txt.includes(targetText.toLowerCase()) || val.includes(targetCode.toLowerCase());
-      });
-      if (match) {
-        element.value = match.value;
-        element.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-      return;
-    }
+    let filled = false;
 
-    // Case 2: Standard <input>
-    if (element.tagName === 'INPUT' && element.type !== 'radio') {
-      setInputValue(element, targetText);
-    }
+    // Scan all labels, inputs, selects, and dropdown containers
+    const candidates = Array.from(document.querySelectorAll('label, div, span, p, [role="combobox"], [role="listbox"], select, input'));
 
-    // Case 3: Custom React/Vue dropdown container
-    const container = element.closest('.select, .dropdown, [role="combobox"], [role="listbox"], div') || element.parentElement;
-    if (container) {
-      try {
-        triggerElementClick(container);
-        setTimeout(() => {
-          const options = document.querySelectorAll('.option, [role="option"], li, div, span');
-          for (const opt of options) {
-            const txt = (opt.textContent || '').trim().toLowerCase();
-            if (txt === targetText.toLowerCase() || (targetText.startsWith('Муж') && txt.includes('муж')) || (targetText.startsWith('Жен') && txt.includes('жен'))) {
-              triggerElementClick(opt);
-              break;
-            }
+    for (const el of candidates) {
+      const ph = (el.placeholder || '').toLowerCase();
+      const txt = (el.textContent || el.innerText || '').trim().toLowerCase();
+
+      if (ph.includes('пол') || txt === 'пол*' || txt === 'пол' || (txt.startsWith('пол') && txt.length < 8 && !txt.includes('пользователь') && !txt.includes('поликлиника'))) {
+        const container = el.closest('.form-group, .field, label, div') || el.parentElement || el;
+
+        // Scenario A: Standard <select> inside container
+        const sel = container.querySelector('select') || (el.tagName === 'SELECT' ? el : null);
+        if (sel) {
+          const options = Array.from(sel.options);
+          const match = options.find((opt) => {
+            const optTxt = (opt.textContent || '').toLowerCase();
+            const optVal = (opt.value || '').toLowerCase();
+            return optTxt.includes(targetRu.toLowerCase()) || optVal.includes(targetCode.toLowerCase());
+          });
+          if (match) {
+            sel.value = match.value;
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            filled = true;
+            break;
           }
-        }, 150);
-      } catch (e) {}
+        }
+
+        // Scenario B: Input inside container
+        const inp = container.querySelector('input') || (el.tagName === 'INPUT' ? el : null);
+        if (inp && inp.id !== 'pbw-search-input') {
+          setInputValue(inp, targetRu);
+          filled = true;
+        }
+
+        // Scenario C: Custom React/Vue dropdown trigger (Click to open list, then click option)
+        const clickTarget = container.querySelector('[role="combobox"], [role="listbox"], .select, .dropdown, button, div') || container;
+        if (clickTarget) {
+          try {
+            triggerElementClick(clickTarget);
+            setTimeout(() => {
+              const options = Array.from(document.querySelectorAll('.option, [role="option"], li, div, span, button'));
+              for (const opt of options) {
+                const optTxt = (opt.textContent || '').trim().toLowerCase();
+                if (optTxt === targetRu.toLowerCase() || (targetRu.startsWith('Муж') && optTxt.includes('муж')) || (targetText.startsWith('Жен') && optTxt.includes('жен'))) {
+                  triggerElementClick(opt);
+                  break;
+                }
+              }
+            }, 100);
+            filled = true;
+          } catch (e) {}
+        }
+
+        if (filled) break;
+      }
     }
+
+    return filled;
   }
 
   // Observer to inject button as soon as DOM loads or updates, with debouncing
