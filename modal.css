@@ -2,13 +2,13 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-/* Injected Wizzard Button - Inline next to "+ Добавить пациента" */
+/* Injected Wizzard Button - Inverted PlanB Primary Style */
 .planb-wizzard-btn {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 8px !important;
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important;
+  background: #3b82f6 !important;
   color: #ffffff !important;
   font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
   font-size: 14px !important;
@@ -16,25 +16,26 @@
   padding: 0 16px !important;
   height: 38px !important;
   line-height: 38px !important;
-  border-radius: 6px !important;
-  border: 1px solid #4338ca !important;
+  border-radius: 4px !important;
+  border: 1px solid #2563eb !important;
   cursor: pointer !important;
-  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.25) !important;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3) !important;
   transition: all 0.2s ease !important;
-  margin-left: 12px !important;
-  margin-right: 16px !important;
+  margin-left: 8px !important;
+  margin-right: 8px !important;
   vertical-align: middle !important;
   white-space: nowrap !important;
   z-index: 1000 !important;
 }
 
 .planb-wizzard-btn:hover {
-  background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%) !important;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4) !important;
-  transform: translateY(-1px) !important;
+  background: #2563eb !important;
+  border-color: #1d4ed8 !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important;
 }
 
 .planb-wizzard-btn:active {
+  background: #1d4ed8 !important;
   transform: translateY(0) !important;
 }
 
