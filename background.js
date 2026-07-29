@@ -12,6 +12,14 @@ const DEFAULT_CONFIG = {
   limit: 50
 };
 
+// Force reset any old localhost storage to working default
+chrome.storage.local.get(['planb_wizzard_config'], (result) => {
+  const cfg = result.planb_wizzard_config;
+  if (!cfg || !cfg.orthancUrl || cfg.orthancUrl.includes('localhost')) {
+    chrome.storage.local.set({ planb_wizzard_config: DEFAULT_CONFIG });
+  }
+});
+
 // Normalize URL (automatically prepends http:// if missing and strips trailing slashes)
 function normalizeUrl(url) {
   if (!url || typeof url !== 'string') return 'http://192.168.5.155:8042';
@@ -147,15 +155,14 @@ async function tryFetchEndpoint(baseUrl, path, config, extraOptions = {}) {
   }
 }
 
-// Fetch studies from Orthanc using fast POST /tools/find primary method
+// Fetch studies from Orthanc
 async function fetchStudies(config) {
   config.orthancUrl = normalizeUrl(config.orthancUrl);
   
   const rawCandidates = [
     config.orthancUrl,
     'http://192.168.5.155:8042',
-    'http://192.168.5.155:4242',
-    'http://localhost:8042'
+    'http://192.168.5.155:4242'
   ];
 
   const candidateUrls = [];
@@ -163,10 +170,6 @@ async function fetchStudies(config) {
     if (!url) continue;
     const norm = normalizeUrl(url);
     if (!candidateUrls.includes(norm)) candidateUrls.push(norm);
-    if (norm.includes(':4242')) {
-      const port8042 = norm.replace(':4242', ':8042');
-      if (!candidateUrls.includes(port8042)) candidateUrls.push(port8042);
-    }
   }
 
   let lastError = '';
@@ -176,7 +179,7 @@ async function fetchStudies(config) {
   const postBody = JSON.stringify({ Level: 'Study', Query: {}, Expand: true, Limit: config.limit || 50 });
 
   for (const baseUrl of candidateUrls) {
-    // Attempt 1: POST /tools/find (Lightning fast 60ms query!)
+    // Attempt 1: POST /tools/find
     let result = await tryFetchEndpoint(baseUrl, '/tools/find', config, { method: 'POST', body: postBody });
 
     if (result.status === 401) {
@@ -194,7 +197,7 @@ async function fetchStudies(config) {
       break;
     }
 
-    // Attempt 2: GET /studies?expand (Fallback)
+    // Attempt 2: GET /studies?expand
     result = await tryFetchEndpoint(baseUrl, '/studies?expand', config, { method: 'GET' });
 
     if (result.ok && result.data) {
@@ -277,7 +280,7 @@ async function fetchStudies(config) {
 // Test connection to Orthanc
 async function testConnection(config) {
   const norm = normalizeUrl(config.orthancUrl);
-  const candidateUrls = [norm, 'http://192.168.5.155:8042', 'http://192.168.5.155:4242', 'http://localhost:8042'];
+  const candidateUrls = [norm, 'http://192.168.5.155:8042', 'http://192.168.5.155:4242'];
 
   for (const baseUrl of candidateUrls) {
     const result = await tryFetchEndpoint(baseUrl, '/system', config, { method: 'GET' });
@@ -289,14 +292,14 @@ async function testConnection(config) {
   return { success: false, error: 'Не удалось подключиться к Orthanc. Проверьте адрес и порт.' };
 }
 
-// Message Listener with full debug logging
+// Message Listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[PlanB Background] Received message action:', request.action);
 
   if (request.action === 'GET_CONFIG') {
     getConfig()
       .then((cfg) => sendResponse(cfg))
-      .catch(() => sendResponse({ orthancUrl: 'http://192.168.5.155:8042' }));
+      .catch(() => sendResponse(DEFAULT_CONFIG));
     return true;
   }
 
