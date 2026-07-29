@@ -11,6 +11,7 @@
   let modalContainer = null;
   let isInjecting = false;
   let planbNativeAddButton = null;
+  let pendingStudy = null; // DICOM data waiting to fill the next PlanB modal that opens
 
   // SVG Icons
   const WIZARD_ICON = `<svg viewBox="0 0 24 24"><path d="M7.5 5.6L5 7l1.4-2.5L5 2l2.5 1.4L10 2 8.6 4.5 10 7 7.5 5.6zm12 9.8l-2.5 1.4 1.4 2.5-2.5-1.4-2.5 1.4 1.4-2.5-1.4-2.5 2.5 1.4 2.5-1.4-1.4 2.5 1.4 2.5zM19.5 2l-1.4 2.5 2.5 1.4-2.5 1.4 1.4 2.5-2.5-1.4-2.5 1.4 1.4-2.5-1.4-2.5 2.5 1.4L19.5 2zM9.24 10.19l7.07-7.07c.39-.39 1.02-.39 1.41 0l2.83 2.83c.39.39.39 1.02 0 1.41l-7.07 7.07-4.24-4.24zm-1.41 1.42l4.24 4.24-6.36 6.36H1.5v-4.24l6.33-6.36z"/></svg>`;
@@ -626,54 +627,55 @@
     }, 2500);
   }
 
+  // Show a non-blocking toast notification inside the page
+  function showToast(message, durationMs = 4000) {
+    const existing = document.getElementById('pbw-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'pbw-toast';
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: #f8fafc;
+      border: 1px solid #6366f1;
+      border-radius: 10px;
+      padding: 14px 22px;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      z-index: 9999999;
+      pointer-events: none;
+      text-align: center;
+      line-height: 1.5;
+      max-width: 420px;
+      animation: pbw-toast-in 0.25s ease;
+    `;
+    toast.innerHTML = message;
+
+    const style = document.createElement('style');
+    style.textContent = `@keyframes pbw-toast-in { from { opacity:0; transform:translateX(-50%) translateY(12px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }`;
+    document.head.appendChild(style);
+    document.body.appendChild(toast);
+
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, durationMs);
+  }
+
   // Action on clicking "Выбрать" next to a patient in Wizzard
   function applyStudyToPlanB(study) {
-    console.log('[PlanB Wizzard] Apply study clicked for:', study);
+    // 1. Save study data — MutationObserver will auto-fill it when PlanB modal opens
+    pendingStudy = study;
 
-    // 1. Locate PlanB's live native button in DOM BEFORE closing Wizzard
-    const addPatientBtn = findAddPatientButton();
-    console.log('[PlanB Wizzard] Add patient button found:', addPatientBtn);
-
-    // 2. Close Wizzard modal instantly (display:none removes it from event flow)
+    // 2. Close Wizzard
     closeModal();
 
-    // 3. Click the PlanB button directly using prototype call (bypasses any JS interception)
-    const directClick = (btn) => {
-      if (!btn) return;
-      try { btn.focus(); } catch (e) {}
-      // Use HTMLElement prototype click to avoid any overrides
-      HTMLElement.prototype.click.call(btn);
-      // Also dispatch via prototype for React compatibility
-      const opts = { bubbles: true, cancelable: true, view: window };
-      btn.dispatchEvent(new MouseEvent('click', opts));
-      console.log('[PlanB Wizzard] Clicked:', btn);
-    };
-
-    if (addPatientBtn) {
-      directClick(addPatientBtn);
-      // Retry after short delay in case first click was missed
-      setTimeout(() => directClick(addPatientBtn), 150);
-      setTimeout(() => directClick(addPatientBtn), 400);
-    } else {
-      console.warn('[PlanB Wizzard] Add Patient Button not found!');
-    }
-
-    // 4. Poll for PlanB modal inputs up to 50 attempts (4 seconds)
-    let attempts = 0;
-    const checkInterval = setInterval(() => {
-      attempts++;
-
-      if (attempts === 5 || attempts === 10) {
-        const freshBtn = findAddPatientButton();
-        if (freshBtn) directClick(freshBtn);
-      }
-
-      const filled = fillStarredFormFields(study);
-      if (filled || attempts >= 50) {
-        console.log('[PlanB Wizzard] Polling finished. Filled:', filled);
-        clearInterval(checkInterval);
-      }
-    }, 80);
+    // 3. Show hint to user
+    const name = study.patientName.fullName || '';
+    showToast(`✅ Данные пациента <b>${name}</b> готовы.<br>Нажмите <b>«+ Добавить пациента»</b> — поля заполнятся автоматически.`, 6000);
   }
 
   // Populate starred fields from DICOM tags
@@ -829,12 +831,29 @@
   }
 
   // Observer to inject button as soon as DOM loads or updates, with debouncing
+  // Also watches for PlanB native modal to open and auto-fills fields from pendingStudy
   let debounceTimeout = null;
+  let fillDebounceTimeout = null;
   const observer = new MutationObserver(() => {
     if (debounceTimeout) clearTimeout(debounceTimeout);
     debounceTimeout = setTimeout(() => {
       injectWizzardButton();
     }, 100);
+
+    // If we have a pending study, try to fill the form any time the DOM changes
+    if (pendingStudy) {
+      if (fillDebounceTimeout) clearTimeout(fillDebounceTimeout);
+      fillDebounceTimeout = setTimeout(() => {
+        if (!pendingStudy) return;
+        const filled = fillStarredFormFields(pendingStudy);
+        if (filled) {
+          // Show success feedback
+          const name = pendingStudy.patientName.fullName || '';
+          showToast(`✅ Поля для пациента <b>${name}</b> заполнены!`, 3000);
+          pendingStudy = null; // Clear after successful fill
+        }
+      }, 80);
+    }
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
