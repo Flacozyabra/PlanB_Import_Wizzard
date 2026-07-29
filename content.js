@@ -441,35 +441,38 @@
       .replace(/"/g, '&quot;');
   }
 
-  // Smart locator to find PlanB's "+ Добавить пациента" button
+  // Smart locator to find PlanB's "+ Добавить пациента" or "+ Создать запись" button
   function findAddPatientButton() {
-    const candidates = document.querySelectorAll('button, a, [role="button"], .btn, .button, span, div, p');
+    const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], .btn, .button, span, div, p'));
     for (let i = 0; i < candidates.length; i++) {
       const el = candidates[i];
       if (el.id === 'planb-wizzard-btn' || el.closest('#planb-wizzard-btn')) continue;
 
       const text = (el.innerText || el.textContent || '').trim();
-      if (text.length > 60) continue;
+      if (text.length === 0 || text.length > 60) continue;
 
       const lowerText = text.toLowerCase();
       if (
         lowerText.includes('добавить пациента') ||
         lowerText.includes('создать запись') ||
-        lowerText.includes('пациент') ||
+        lowerText.includes('добавить запись') ||
+        lowerText.includes('создать пациента') ||
+        lowerText.includes('новый пациент') ||
         lowerText.includes('add patient') ||
-        (lowerText.includes('добавить') && (lowerText.includes('пациент') || lowerText.includes('запись')))
+        (lowerText.includes('пациент') && (lowerText.includes('добавить') || lowerText.includes('создать') || lowerText.includes('+'))) ||
+        (lowerText.includes('запись') && (lowerText.includes('добавить') || lowerText.includes('создать') || lowerText.includes('+')))
       ) {
         const btn = el.closest('button, a, [role="button"], .btn') || el;
         if (btn && btn.id !== 'planb-wizzard-btn') return btn;
       }
     }
 
-    const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"], input[placeholder*="пациент"]');
+    const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"], input[placeholder*="пациент"], input[placeholder*="поиск"]');
     if (searchInput) {
-      const container = searchInput.closest('div, form, header, section') || searchInput.parentElement;
+      const container = searchInput.closest('div, form, header, nav, section') || searchInput.parentElement;
       if (container) {
-        const btn = container.querySelector('button, a, [role="button"], .btn');
-        if (btn && btn.id !== 'planb-wizzard-btn') return btn;
+        const btn = container.querySelector('button:not(#planb-wizzard-btn), a:not(#planb-wizzard-btn)');
+        if (btn) return btn;
       }
     }
 
@@ -541,21 +544,31 @@
     }
   }
 
-  // Trigger MouseEvents + Click to activate React/Vue handlers
+  // Deep multi-target trigger for PointerEvents + MouseEvents + Click
   function triggerElementClick(el) {
     if (!el) return;
-    try {
-      el.focus();
-    } catch (e) {}
 
-    const opts = { bubbles: true, cancelable: true, view: window };
-    el.dispatchEvent(new MouseEvent('mousedown', opts));
-    el.dispatchEvent(new MouseEvent('mouseup', opts));
-    el.dispatchEvent(new MouseEvent('click', opts));
+    const target = el;
+    const parentContainer = el.closest('button, a, [role="button"], .btn') || el;
+    const childSpan = el.querySelector('span, i, svg, div, p') || el;
 
-    if (typeof el.click === 'function') {
-      el.click();
-    }
+    const elementsToClick = [target, parentContainer, childSpan];
+
+    elementsToClick.forEach(targetEl => {
+      if (!targetEl) return;
+      try { targetEl.focus(); } catch (e) {}
+
+      const opts = { bubbles: true, cancelable: true, view: window };
+      targetEl.dispatchEvent(new MouseEvent('pointerdown', opts));
+      targetEl.dispatchEvent(new MouseEvent('mousedown', opts));
+      targetEl.dispatchEvent(new MouseEvent('pointerup', opts));
+      targetEl.dispatchEvent(new MouseEvent('mouseup', opts));
+      targetEl.dispatchEvent(new MouseEvent('click', opts));
+
+      if (typeof targetEl.click === 'function') {
+        try { targetEl.click(); } catch (e) {}
+      }
+    });
   }
 
   // Helper to trigger full React / Vue / Angular input events
@@ -593,59 +606,47 @@
 
   // Action on clicking "Выбрать" next to a patient in Wizzard
   function applyStudyToPlanB(study) {
+    console.log('[PlanB Wizzard] Apply study clicked for:', study);
     closeModal();
 
     // 1. Click "+ Добавить пациента" / "+ Создать запись" button in PlanB
     const addPatientBtn = findAddPatientButton();
     if (addPatientBtn) {
-      console.log('[PlanB Wizzard] Clicking Add Patient Button:', addPatientBtn);
+      console.log('[PlanB Wizzard] Triggering multi-target click on:', addPatientBtn);
       triggerElementClick(addPatientBtn);
     } else {
       console.warn('[PlanB Wizzard] Add Patient Button not found in DOM.');
     }
 
-    // 2. Poll for modal inputs up to 40 attempts (4 seconds)
+    // 2. Poll for modal inputs up to 50 attempts (4 seconds)
     let attempts = 0;
     const checkInterval = setInterval(() => {
       attempts++;
 
-      const allInputs = document.querySelectorAll('input, select, textarea');
-      let foundStarredInput = null;
-
-      for (const input of allInputs) {
-        const ph = (input.placeholder || '').toLowerCase();
-        const labelText = input.parentElement ? (input.parentElement.textContent || '').toLowerCase() : '';
-        if (ph.includes('фамил') || ph.includes('имя') || labelText.includes('фамил') || labelText.includes('имя')) {
-          foundStarredInput = input;
-          break;
-        }
-      }
-
-      if (foundStarredInput) {
-        clearInterval(checkInterval);
-        console.log('[PlanB Wizzard] Found PlanB modal input. Filling fields...');
-        fillStarredFormFields(study);
-        return;
-      }
-
-      // Retry clicking button on attempt 5 & 10 if modal hasn't opened yet
-      if ((attempts === 5 || attempts === 10) && addPatientBtn) {
+      // Retry clicking button on attempt 3, 7, 12 if no fields have filled yet
+      if ((attempts === 3 || attempts === 7 || attempts === 12) && addPatientBtn) {
         triggerElementClick(addPatientBtn);
       }
 
-      if (attempts >= 40) {
+      const filled = fillStarredFormFields(study);
+      if (filled || attempts >= 50) {
+        console.log('[PlanB Wizzard] Polling finished. Filled:', filled);
         clearInterval(checkInterval);
-        console.warn('[PlanB Wizzard] Timed out waiting for PlanB modal inputs.');
       }
-    }, 100);
+    }, 80);
   }
 
   // Populate starred fields from DICOM tags
   function fillStarredFormFields(study) {
     const allInputs = Array.from(document.querySelectorAll('input, select, textarea'));
-    if (allInputs.length === 0) return;
+    if (allInputs.length === 0) return false;
+
+    let filledAny = false;
 
     allInputs.forEach((input) => {
+      // Ignore Wizzard search or hidden elements
+      if (input.id === 'pbw-search-input' || input.type === 'hidden') return;
+
       const ph = (input.placeholder || '').toLowerCase();
       const name = (input.name || '').toLowerCase();
       const id = (input.id || '').toLowerCase();
@@ -664,28 +665,29 @@
       // 1. Фамилия*
       if (combinedText.includes('фамил')) {
         const val = study.patientName.lastName || study.patientName.fullName || '';
-        if (val) setInputValue(input, val);
+        if (val) { setInputValue(input, val); filledAny = true; }
       }
 
       // 2. Имя* (excluding Фамилия / Отчество / ФИО)
       else if (combinedText.includes('имя') && !combinedText.includes('фамил') && !combinedText.includes('отчеств') && !combinedText.includes('фио')) {
         const val = study.patientName.firstName || '';
-        if (val) setInputValue(input, val);
+        if (val) { setInputValue(input, val); filledAny = true; }
       }
 
       // 3. Отчество (optional)
       else if (combinedText.includes('отчеств')) {
         const val = study.patientName.middleName || '';
-        if (val) setInputValue(input, val);
+        if (val) { setInputValue(input, val); filledAny = true; }
       }
 
       // 4. Дата рождения*
       else if (combinedText.includes('рожд') || combinedText.includes('birth') || combinedText.includes('dob')) {
         if (input.type === 'date') {
-          if (study.patientBirthDate.iso) setInputValue(input, study.patientBirthDate.iso);
+          if (study.patientBirthDate.iso) { setInputValue(input, study.patientBirthDate.iso); filledAny = true; }
         } else {
           if (study.patientBirthDate.ru || study.patientBirthDate.iso) {
             setInputValue(input, study.patientBirthDate.ru || study.patientBirthDate.iso);
+            filledAny = true;
           }
         }
       }
@@ -693,14 +695,17 @@
       // 5. ID*
       else if (combinedText.includes('id*') || (combinedText.includes('id') && !combinedText.includes('снилс') && !combinedText.includes('телефон'))) {
         const val = study.patientId || '';
-        if (val) setInputValue(input, val);
+        if (val) { setInputValue(input, val); filledAny = true; }
       }
 
       // 6. Пол* (Dropdown or Select or Radio)
       else if (combinedText.includes('пол*') || combinedText.includes('пол')) {
         fillGenderField(input, study.patientSex);
+        filledAny = true;
       }
     });
+
+    return filledAny;
   }
 
   // Smart handler for Gender dropdowns / selects / radio buttons
