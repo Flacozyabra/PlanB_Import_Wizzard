@@ -3,6 +3,8 @@
  * Handles network requests to Orthanc REST API bypassing CORS & Mixed Content restrictions.
  */
 
+console.log('[PlanB Background Worker] Service worker initialized.');
+
 const DEFAULT_CONFIG = {
   orthancUrl: 'http://192.168.5.155:8042',
   username: 'orthanc',
@@ -126,17 +128,21 @@ async function tryFetchEndpoint(baseUrl, path, config, extraOptions = {}) {
     };
     if (extraOptions.body) fetchOptions.body = extraOptions.body;
 
+    console.log('[PlanB Background] Fetching:', targetUrl);
     const res = await fetch(targetUrl, fetchOptions);
     if (!res.ok) {
       clearTimeout(timeoutId);
+      console.warn('[PlanB Background] HTTP Error:', res.status, 'for', targetUrl);
       return { ok: false, status: res.status, error: `HTTP ${res.status}`, url: targetUrl };
     }
     const data = await res.json();
     clearTimeout(timeoutId);
+    console.log('[PlanB Background] Fetch SUCCESS for:', targetUrl);
     return { ok: true, status: res.status, data, url: targetUrl };
   } catch (err) {
     clearTimeout(timeoutId);
     const msg = err.name === 'AbortError' ? 'Превышено время ожидания ответа (12 сек)' : err.message;
+    console.error('[PlanB Background] Fetch Exception for', targetUrl, ':', msg);
     return { ok: false, status: 0, error: msg, url: targetUrl };
   }
 }
@@ -283,8 +289,10 @@ async function testConnection(config) {
   return { success: false, error: 'Не удалось подключиться к Orthanc. Проверьте адрес и порт.' };
 }
 
-// Message Listener with explicit error reporting
+// Message Listener with full debug logging
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log('[PlanB Background] Received message action:', request.action);
+
   if (request.action === 'GET_CONFIG') {
     getConfig()
       .then((cfg) => sendResponse(cfg))
@@ -311,8 +319,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'GET_STUDIES') {
     getConfig()
       .then((config) => fetchStudies(config))
-      .then((result) => sendResponse(result))
-      .catch((err) => sendResponse({ success: false, error: 'Ошибка Service Worker: ' + (err.message || String(err)) }));
+      .then((result) => {
+        console.log('[PlanB Background] GET_STUDIES returning result success:', result.success);
+        sendResponse(result);
+      })
+      .catch((err) => {
+        console.error('[PlanB Background] GET_STUDIES error:', err);
+        sendResponse({ success: false, error: 'Ошибка Service Worker: ' + (err.message || String(err)) });
+      });
     return true;
   }
 });
