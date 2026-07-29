@@ -10,7 +10,7 @@
   let allStudies = [];
   let modalContainer = null;
   let isInjecting = false;
-  let planbNativeAddButton = null; // Cached reference to PlanB's native button
+  let planbNativeAddButton = null;
 
   // SVG Icons
   const WIZARD_ICON = `<svg viewBox="0 0 24 24"><path d="M7.5 5.6L5 7l1.4-2.5L5 2l2.5 1.4L10 2 8.6 4.5 10 7 7.5 5.6zm12 9.8l-2.5 1.4 1.4 2.5-2.5-1.4-2.5 1.4 1.4-2.5-1.4-2.5 2.5 1.4 2.5-1.4-1.4 2.5 1.4 2.5zM19.5 2l-1.4 2.5 2.5 1.4-2.5 1.4 1.4 2.5-2.5-1.4-2.5 1.4 1.4-2.5-1.4-2.5 2.5 1.4L19.5 2zM9.24 10.19l7.07-7.07c.39-.39 1.02-.39 1.41 0l2.83 2.83c.39.39.39 1.02 0 1.41l-7.07 7.07-4.24-4.24zm-1.41 1.42l4.24 4.24-6.36 6.36H1.5v-4.24l6.33-6.36z"/></svg>`;
@@ -442,12 +442,21 @@
       .replace(/"/g, '&quot;');
   }
 
-  // Smart locator to find PlanB's "+ Добавить пациента" or "+ Создать запись" button
+  // Real-time locator to find PlanB's "+ Добавить пациента" or "+ Создать запись" button
   function findAddPatientButton() {
+    // Strategy 1: Check cached reference
     if (planbNativeAddButton && document.body.contains(planbNativeAddButton) && planbNativeAddButton.id !== 'planb-wizzard-btn') {
       return planbNativeAddButton;
     }
 
+    // Strategy 2: Direct sibling check relative to injected Wizzard button
+    const wizzardBtn = document.getElementById('planb-wizzard-btn');
+    if (wizzardBtn && wizzardBtn.previousElementSibling && wizzardBtn.previousElementSibling.id !== 'planb-wizzard-btn') {
+      planbNativeAddButton = wizzardBtn.previousElementSibling;
+      return planbNativeAddButton;
+    }
+
+    // Strategy 3: Real-time scan of live DOM tree
     const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], .btn, .button, span, div, p'));
     for (let i = 0; i < candidates.length; i++) {
       const el = candidates[i];
@@ -518,7 +527,6 @@
       try {
         if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
 
-        // Always inline placement inside top toolbar
         wizzardBtn.style.position = 'static';
         wizzardBtn.style.bottom = 'auto';
         wizzardBtn.style.right = 'auto';
@@ -553,12 +561,12 @@
     }
   }
 
-  // Deep multi-target trigger for PointerEvents + MouseEvents + Click
+  // Deep multi-target trigger for PointerEvents + MouseEvents + Click on target, container, child & previous sibling
   function triggerElementClick(el) {
     if (!el) return;
 
     const target = el;
-    const parentContainer = el.closest('button, a, [role="button"], .btn') || el;
+    const parentContainer = el.closest('button, a, [role="button"], .btn, div') || el;
     const childSpan = el.querySelector('span, i, svg, div, p') || el;
 
     const elementsToClick = [target, parentContainer, childSpan];
@@ -568,9 +576,9 @@
       try { targetEl.focus(); } catch (e) {}
 
       const opts = { bubbles: true, cancelable: true, view: window };
-      targetEl.dispatchEvent(new MouseEvent('pointerdown', opts));
+      targetEl.dispatchEvent(new PointerEvent('pointerdown', opts));
       targetEl.dispatchEvent(new MouseEvent('mousedown', opts));
-      targetEl.dispatchEvent(new MouseEvent('pointerup', opts));
+      targetEl.dispatchEvent(new PointerEvent('pointerup', opts));
       targetEl.dispatchEvent(new MouseEvent('mouseup', opts));
       targetEl.dispatchEvent(new MouseEvent('click', opts));
 
@@ -617,38 +625,39 @@
   function applyStudyToPlanB(study) {
     console.log('[PlanB Wizzard] Apply study clicked for:', study);
 
-    // 1. Get PlanB native button BEFORE closing Wizzard modal so reference is guaranteed
+    // 1. Locate PlanB's live native button in DOM before closing modal
     const addPatientBtn = findAddPatientButton();
 
     // 2. Close Wizzard modal
     closeModal();
 
-    // 3. Wait 150ms for Wizzard modal backdrop overlay to completely unmount/hide
-    setTimeout(() => {
-      if (addPatientBtn) {
-        console.log('[PlanB Wizzard] Triggering click on PlanB native button:', addPatientBtn);
-        triggerElementClick(addPatientBtn);
-      } else {
-        console.warn('[PlanB Wizzard] Add Patient Button not found in DOM.');
+    // 3. Execute click immediately AND after 100ms
+    const triggerClick = () => {
+      const liveBtn = findAddPatientButton();
+      if (liveBtn) {
+        console.log('[PlanB Wizzard] Triggering click on live button:', liveBtn);
+        triggerElementClick(liveBtn);
+      }
+    };
+
+    triggerClick();
+    setTimeout(triggerClick, 100);
+
+    // 4. Poll for PlanB modal inputs up to 50 attempts (4 seconds)
+    let attempts = 0;
+    const checkInterval = setInterval(() => {
+      attempts++;
+
+      if (attempts === 3 || attempts === 6 || attempts === 10) {
+        triggerClick();
       }
 
-      // 4. Poll for PlanB modal inputs up to 50 attempts (4 seconds)
-      let attempts = 0;
-      const checkInterval = setInterval(() => {
-        attempts++;
-
-        // Retry clicking button on attempt 2, 5, 9 if no fields have filled yet
-        if ((attempts === 2 || attempts === 5 || attempts === 9) && addPatientBtn) {
-          triggerElementClick(addPatientBtn);
-        }
-
-        const filled = fillStarredFormFields(study);
-        if (filled || attempts >= 50) {
-          console.log('[PlanB Wizzard] Polling finished. Filled:', filled);
-          clearInterval(checkInterval);
-        }
-      }, 80);
-    }, 150);
+      const filled = fillStarredFormFields(study);
+      if (filled || attempts >= 50) {
+        console.log('[PlanB Wizzard] Polling finished. Filled:', filled);
+        clearInterval(checkInterval);
+      }
+    }, 80);
   }
 
   // Populate starred fields from DICOM tags
