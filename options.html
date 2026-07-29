@@ -44,7 +44,7 @@
       color: #cbd5e1;
       margin-bottom: 6px;
     }
-    input[type="text"], input[type="password"], input[type="number"] {
+    input[type="text"], input[type="password"], input[type="number"], input[type="url"] {
       width: 100%;
       box-sizing: border-box;
       padding: 10px 14px;
@@ -116,30 +116,30 @@
     <h1>Настройки Orthanc Wizzard</h1>
     <p>Конфигурация подключения к Orthanc DICOM серверу</p>
 
-    <form id="settings-form">
+    <form id="options-form">
       <div class="form-group">
-        <label for="orthancUrl">Адрес Orthanc сервера (URL)</label>
-        <input type="text" id="orthancUrl" placeholder="http://192.168.1.100:8042" required />
+        <label for="orthanc-url">Адрес Orthanc сервера (URL)</label>
+        <input type="text" id="orthanc-url" placeholder="http://localhost:8042 или http://192.168.x.x:8042" required />
       </div>
 
       <div class="form-group">
-        <label for="username">Логин (если требуется Basic Auth)</label>
-        <input type="text" id="username" placeholder="orthanc" />
+        <label for="orthanc-user">Логин (если требуется Basic Auth)</label>
+        <input type="text" id="orthanc-user" placeholder="Логин (например, orthanc)" />
       </div>
 
       <div class="form-group">
-        <label for="password">Пароль (если требуется Basic Auth)</label>
-        <input type="password" id="password" placeholder="••••••••" />
+        <label for="orthanc-pass">Пароль (если требуется Basic Auth)</label>
+        <input type="password" id="orthanc-pass" placeholder="Пароль" />
       </div>
 
       <div class="form-group">
-        <label for="limit">Лимит исследований в списке</label>
-        <input type="number" id="limit" value="50" min="10" max="500" />
+        <label for="orthanc-limit">Лимит исследований в списке</label>
+        <input type="number" id="orthanc-limit" value="50" min="10" max="500" />
       </div>
 
       <div class="btn-row">
         <button type="button" id="test-btn" class="btn-secondary">Проверить связь</button>
-        <button type="submit" class="btn-primary">Сохранить</button>
+        <button type="submit" id="save-btn" class="btn-primary">Сохранить</button>
       </div>
     </form>
 

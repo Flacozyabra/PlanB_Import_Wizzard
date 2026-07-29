@@ -21,103 +21,108 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Helper: display status message
   function showStatus(text, type = 'info') {
+    if (!statusEl) return;
     statusEl.textContent = text;
-    statusEl.className = `pbw-status-banner ${type}`;
+    statusEl.className = `status ${type}`;
     statusEl.style.display = 'block';
   }
 
   function hideStatus() {
-    statusEl.style.display = 'none';
+    if (statusEl) statusEl.style.display = 'none';
   }
 
   // Load stored options from chrome.storage.local
   chrome.storage.local.get(['planb_wizzard_config'], (result) => {
     const config = result.planb_wizzard_config || DEFAULT_CONFIG;
-    urlInput.value = config.orthancUrl || DEFAULT_CONFIG.orthancUrl;
-    userInput.value = config.username !== undefined ? config.username : '';
-    passInput.value = config.password !== undefined ? config.password : '';
-    limitInput.value = config.limit || 50;
+    if (urlInput) urlInput.value = config.orthancUrl || DEFAULT_CONFIG.orthancUrl;
+    if (userInput) userInput.value = config.username !== undefined ? config.username : '';
+    if (passInput) passInput.value = config.password !== undefined ? config.password : '';
+    if (limitInput) limitInput.value = config.limit || 50;
   });
 
   // Save button
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
 
-    let targetBase = urlInput.value.trim();
-    if (!targetBase.startsWith('http://') && !targetBase.startsWith('https://')) {
-      targetBase = 'http://' + targetBase;
-    }
-    targetBase = targetBase.replace(/\/+$/, '');
+      let targetBase = urlInput.value.trim();
+      if (!targetBase.startsWith('http://') && !targetBase.startsWith('https://')) {
+        targetBase = 'http://' + targetBase;
+      }
+      targetBase = targetBase.replace(/\/+$/, '');
 
-    const config = {
-      orthancUrl: targetBase,
-      username: userInput.value.trim(),
-      password: passInput.value.trim(),
-      limit: parseInt(limitInput.value, 10) || 50
-    };
+      const config = {
+        orthancUrl: targetBase,
+        username: userInput.value.trim(),
+        password: passInput.value.trim(),
+        limit: parseInt(limitInput.value, 10) || 50
+      };
 
-    chrome.storage.local.set({ planb_wizzard_config: config }, () => {
-      showStatus('Настройки успешно сохранены!', 'success');
-      setTimeout(hideStatus, 3000);
+      chrome.storage.local.set({ planb_wizzard_config: config }, () => {
+        showStatus('Настройки успешно сохранены!', 'success');
+        setTimeout(hideStatus, 3000);
+      });
     });
-  });
+  }
 
   // Test connection button directly
-  testBtn.addEventListener('click', async () => {
-    showStatus('Проверка соединения с Orthanc...', 'info');
+  if (testBtn) {
+    testBtn.addEventListener('click', async () => {
+      showStatus('Проверка соединения с Orthanc...', 'info');
 
-    let rawUrl = urlInput.value.trim() || 'http://localhost:8042';
-    if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
-      rawUrl = 'http://' + rawUrl;
-    }
-    rawUrl = rawUrl.replace(/\/+$/, '');
+      let rawUrl = urlInput.value.trim() || 'http://localhost:8042';
+      if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
+        rawUrl = 'http://' + rawUrl;
+      }
+      rawUrl = rawUrl.replace(/\/+$/, '');
 
-    const username = userInput.value.trim();
-    const password = passInput.value.trim();
+      const username = userInput.value.trim();
+      const password = passInput.value.trim();
 
-    const candidates = [rawUrl];
-    if (rawUrl.includes(':4242')) {
-      candidates.push(rawUrl.replace(':4242', ':8042'));
-    } else if (!rawUrl.includes(':8042')) {
-      candidates.push(rawUrl + ':8042');
-    }
+      const candidates = [rawUrl];
+      if (rawUrl.includes(':4242')) {
+        candidates.push(rawUrl.replace(':4242', ':8042'));
+      } else if (!rawUrl.includes(':8042')) {
+        candidates.push(rawUrl + ':8042');
+      }
 
-    let connected = false;
+      let connected = false;
 
-    for (const targetBase of candidates) {
-      try {
-        const headers = { 'Accept': 'application/json' };
-        if (username || password) {
-          const auth = btoa(`${username}:${password}`);
-          headers['Authorization'] = `Basic ${auth}`;
-        }
+      for (const targetBase of candidates) {
+        try {
+          const headers = { 'Accept': 'application/json' };
+          if (username || password) {
+            const auth = btoa(`${username}:${password}`);
+            headers['Authorization'] = `Basic ${auth}`;
+          }
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-        const res = await fetch(`${targetBase}/system`, { method: 'GET', headers, signal: controller.signal });
-        clearTimeout(timeoutId);
+          const res = await fetch(`${targetBase}/system`, { method: 'GET', headers, signal: controller.signal });
+          clearTimeout(timeoutId);
 
-        if (res.ok) {
-          const data = await res.json();
-          showStatus(`Соединение успешно! Orthanc версия: ${data.Version || 'OK'} (${targetBase})`, 'success');
-          urlInput.value = targetBase;
+          if (res.ok) {
+            const data = await res.json();
+            showStatus(`Соединение успешно! Orthanc версия: ${data.Version || 'OK'} (${targetBase})`, 'success');
+            urlInput.value = targetBase;
 
-          const config = {
-            orthancUrl: targetBase,
-            username,
-            password,
-            limit: parseInt(limitInput.value, 10) || 50
-          };
-          chrome.storage.local.set({ planb_wizzard_config: config });
-          connected = true;
-          break;
-        }
-      } catch (err) {}
-    }
+            const config = {
+              orthancUrl: targetBase,
+              username,
+              password,
+              limit: parseInt(limitInput.value, 10) || 50
+            };
+            chrome.storage.local.set({ planb_wizzard_config: config });
+            connected = true;
+            break;
+          }
+        } catch (err) {}
+      }
 
-    if (!connected) {
-      showStatus('Не удалось подключиться к Orthanc. Проверьте правильность URL, порта и логина/пароля.', 'error');
-    }
-  });
+      if (!connected) {
+        showStatus('Не удалось подключиться к Orthanc. Проверьте правильность URL, порта и логина/пароля.', 'error');
+      }
+    });
+  }
 });
