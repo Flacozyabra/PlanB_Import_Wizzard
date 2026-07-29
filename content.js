@@ -504,6 +504,20 @@
       try {
         if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
 
+        // Copy exact height, padding, and vertical positioning from native button
+        try {
+          const cs = window.getComputedStyle(addPatientBtn);
+          if (cs.height && cs.height !== 'auto') {
+            wizzardBtn.style.height = cs.height;
+            wizzardBtn.style.lineHeight = cs.height;
+          }
+          if (cs.borderRadius) {
+            wizzardBtn.style.borderRadius = cs.borderRadius;
+          }
+          wizzardBtn.style.alignSelf = cs.alignSelf !== 'auto' ? cs.alignSelf : 'center';
+          wizzardBtn.style.verticalAlign = cs.verticalAlign;
+        } catch (e) {}
+
         wizzardBtn.style.position = 'static';
         wizzardBtn.style.display = 'inline-flex';
         wizzardBtn.style.zIndex = '100';
