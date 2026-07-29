@@ -450,20 +450,8 @@
 
   // Real-time locator to find PlanB's "+ Добавить пациента" or "+ Создать запись" button
   function findAddPatientButton() {
-    // Strategy 1: Check cached reference
-    if (planbNativeAddButton && document.body.contains(planbNativeAddButton) && planbNativeAddButton.id !== 'planb-wizzard-btn') {
-      return planbNativeAddButton;
-    }
-
-    // Strategy 2: Direct sibling check relative to injected Wizzard button
-    const wizzardBtn = document.getElementById('planb-wizzard-btn');
-    if (wizzardBtn && wizzardBtn.previousElementSibling && wizzardBtn.previousElementSibling.id !== 'planb-wizzard-btn') {
-      planbNativeAddButton = wizzardBtn.previousElementSibling;
-      return planbNativeAddButton;
-    }
-
-    // Strategy 3: Real-time scan of live DOM tree
-    const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], .btn, .button, span, div, p'));
+    // Scan live DOM tree for matching button
+    const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], .btn, .button, div, span'));
     for (let i = 0; i < candidates.length; i++) {
       const el = candidates[i];
       if (el.id === 'planb-wizzard-btn' || el.closest('#planb-wizzard-btn')) continue;
@@ -479,29 +467,14 @@
         lowerText.includes('создать пациента') ||
         lowerText.includes('новый пациент') ||
         lowerText.includes('add patient') ||
-        (lowerText.includes('пациент') && (lowerText.includes('добавить') || lowerText.includes('создать') || lowerText.includes('+'))) ||
-        (lowerText.includes('запись') && (lowerText.includes('добавить') || lowerText.includes('создать') || lowerText.includes('+')))
+        (lowerText.includes('пациент') && (lowerText.includes('добавить') || lowerText.includes('создать') || lowerText.includes('+')))
       ) {
         const btn = el.closest('button, a, [role="button"], .btn') || el;
         if (btn && btn.id !== 'planb-wizzard-btn') {
-          planbNativeAddButton = btn;
           return btn;
         }
       }
     }
-
-    const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"], input[placeholder*="пациент"], input[placeholder*="поиск"]');
-    if (searchInput) {
-      const container = searchInput.closest('div, form, header, nav, section') || searchInput.parentElement;
-      if (container) {
-        const btn = container.querySelector('button:not(#planb-wizzard-btn), a:not(#planb-wizzard-btn)');
-        if (btn) {
-          planbNativeAddButton = btn;
-          return btn;
-        }
-      }
-    }
-
     return null;
   }
 
@@ -523,10 +496,8 @@
     const addPatientBtn = findAddPatientButton();
 
     if (addPatientBtn && addPatientBtn.parentElement) {
-      planbNativeAddButton = addPatientBtn; // Cache PlanB button reference!
-
       if (wizzardBtn && addPatientBtn.nextSibling === wizzardBtn) {
-        return;
+        return; // Already placed right after addPatientBtn
       }
 
       isInjecting = true;
@@ -534,11 +505,8 @@
         if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
 
         wizzardBtn.style.position = 'static';
-        wizzardBtn.style.bottom = 'auto';
-        wizzardBtn.style.right = 'auto';
+        wizzardBtn.style.display = 'inline-flex';
         wizzardBtn.style.zIndex = '100';
-        wizzardBtn.style.marginRight = '8px';
-        wizzardBtn.style.marginLeft = '8px';
 
         addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
       } finally {
@@ -549,17 +517,16 @@
 
     const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"], input[placeholder*="пациент"], input[placeholder*="поиск"]');
     if (searchInput && searchInput.parentElement) {
-      if (wizzardBtn && searchInput.parentElement.contains(wizzardBtn)) return;
+      const container = searchInput.closest('.MuiBox-root, form, header, nav') || searchInput.parentElement;
+      if (wizzardBtn && container.contains(wizzardBtn)) return;
+
       isInjecting = true;
       try {
         if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
         wizzardBtn.style.position = 'static';
-        wizzardBtn.style.bottom = 'auto';
-        wizzardBtn.style.right = 'auto';
+        wizzardBtn.style.display = 'inline-flex';
         wizzardBtn.style.zIndex = '100';
-        wizzardBtn.style.marginRight = '8px';
-        wizzardBtn.style.marginLeft = '8px';
-        searchInput.parentElement.insertBefore(wizzardBtn, searchInput.nextSibling);
+        container.appendChild(wizzardBtn);
       } finally {
         setTimeout(() => { isInjecting = false; }, 50);
       }
