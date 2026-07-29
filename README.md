@@ -1,4 +1,4 @@
-# PlanB Orthanc Wizzard ✨
+# PlanB Import Wizzard ✨
 
 Браузерное расширение (Manifest V3) для автоматического импорта данных пациентов из КТ-исследований **Orthanc DICOM** сервера в планирующую систему **PlanB**.
 

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "PlanB Orthanc Wizzard",
+  "name": "PlanB Import Wizzard",
   "version": "1.0.0",
   "description": "Автоматическое заполнение данных пациентов в PlanB из КТ-исследований Orthanc",
   "permissions": [
@@ -27,6 +27,6 @@
   ],
   "options_page": "options.html",
   "action": {
-    "default_title": "PlanB Wizzard Settings"
+    "default_title": "PlanB Import Wizzard Settings"
   }
 }
