@@ -50,13 +50,29 @@
     { en: 'Iy', ru: 'ИЙ' },
     { en: 'iy', ru: 'ИЙ' },
 
+    { en: 'IEVNA', ru: 'ЕВНА' },
+    { en: 'Ievna', ru: 'ЕВНА' },
+    { en: 'ievna', ru: 'ЕВНА' },
+
+    { en: 'YEVNA', ru: 'ЕВНА' },
+    { en: 'Yevna', ru: 'ЕВНА' },
+    { en: 'yevna', ru: 'ЕВНА' },
+
+    { en: 'IEVICH', ru: 'ЕВИЧ' },
+    { en: 'Ievich', ru: 'ЕВИЧ' },
+    { en: 'ievich', ru: 'ЕВИЧ' },
+
+    { en: 'YEVICH', ru: 'ЕВИЧ' },
+    { en: 'Yevich', ru: 'ЕВИЧ' },
+    { en: 'yevich', ru: 'ЕВИЧ' },
+
     { en: 'EY', ru: 'ЕЙ' },
     { en: 'Ey', ru: 'ЕЙ' },
     { en: 'ey', ru: 'ЕЙ' },
 
-    { en: 'EE', ru: 'И' },
-    { en: 'Ee', ru: 'И' },
-    { en: 'ee', ru: 'И' }
+    { en: 'EE', ru: 'ЕЕ' },
+    { en: 'Ee', ru: 'ЕЕ' },
+    { en: 'ee', ru: 'ЕЕ' }
   ];
 
   // Single character mappings
