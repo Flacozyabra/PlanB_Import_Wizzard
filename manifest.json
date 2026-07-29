@@ -7,13 +7,9 @@
     "storage"
   ],
   "host_permissions": [
-    "http://192.168.5.155:8042/*",
-    "http://192.168.5.155:4242/*",
-    "http://192.168.5.155/*",
-    "https://192.168.5.155/*",
+    "<all_urls>",
     "http://*/*",
-    "https://*/*",
-    "<all_urls>"
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js"

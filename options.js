@@ -13,9 +13,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveBtn = document.getElementById('save-btn');
 
   const DEFAULT_CONFIG = {
-    orthancUrl: 'http://192.168.5.155:8042',
-    username: 'orthanc',
-    password: 'orthanc',
+    orthancUrl: 'http://localhost:8042',
+    username: '',
+    password: '',
     limit: 50
   };
 
@@ -30,12 +30,12 @@ document.addEventListener('DOMContentLoaded', () => {
     statusEl.style.display = 'none';
   }
 
-  // Load stored options
+  // Load stored options from chrome.storage.local
   chrome.storage.local.get(['planb_wizzard_config'], (result) => {
     const config = result.planb_wizzard_config || DEFAULT_CONFIG;
     urlInput.value = config.orthancUrl || DEFAULT_CONFIG.orthancUrl;
-    userInput.value = config.username !== undefined ? config.username : DEFAULT_CONFIG.username;
-    passInput.value = config.password !== undefined ? config.password : DEFAULT_CONFIG.password;
+    userInput.value = config.username !== undefined ? config.username : '';
+    passInput.value = config.password !== undefined ? config.password : '';
     limitInput.value = config.limit || 50;
   });
 
@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
   testBtn.addEventListener('click', async () => {
     showStatus('Проверка соединения с Orthanc...', 'info');
 
-    let rawUrl = urlInput.value.trim() || 'http://192.168.5.155:8042';
+    let rawUrl = urlInput.value.trim() || 'http://localhost:8042';
     if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
       rawUrl = 'http://' + rawUrl;
     }

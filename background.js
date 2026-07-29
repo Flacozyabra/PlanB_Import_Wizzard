@@ -6,23 +6,15 @@
 console.log('[PlanB Background Worker] Service worker initialized.');
 
 const DEFAULT_CONFIG = {
-  orthancUrl: 'http://192.168.5.155:8042',
-  username: 'orthanc',
-  password: 'orthanc',
+  orthancUrl: 'http://localhost:8042',
+  username: '',
+  password: '',
   limit: 50
 };
 
-// Force reset any old localhost storage to working default
-chrome.storage.local.get(['planb_wizzard_config'], (result) => {
-  const cfg = result.planb_wizzard_config;
-  if (!cfg || !cfg.orthancUrl || cfg.orthancUrl.includes('localhost')) {
-    chrome.storage.local.set({ planb_wizzard_config: DEFAULT_CONFIG });
-  }
-});
-
 // Normalize URL (automatically prepends http:// if missing and strips trailing slashes)
 function normalizeUrl(url) {
-  if (!url || typeof url !== 'string') return 'http://192.168.5.155:8042';
+  if (!url || typeof url !== 'string') return 'http://localhost:8042';
   let trimmed = url.trim();
   if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
     trimmed = 'http://' + trimmed;
@@ -30,7 +22,7 @@ function normalizeUrl(url) {
   return trimmed.replace(/\/+$/, '');
 }
 
-// Retrieve stored settings
+// Retrieve stored settings from chrome.storage.local
 async function getConfig() {
   return new Promise((resolve) => {
     chrome.storage.local.get(['planb_wizzard_config'], (result) => {
@@ -47,8 +39,8 @@ function createFetchHeaders(config) {
   const headers = new Headers();
   headers.append('Accept', 'application/json');
 
-  const user = config.username !== undefined && config.username !== '' ? config.username : 'orthanc';
-  const pass = config.password !== undefined && config.password !== '' ? config.password : 'orthanc';
+  const user = config.username !== undefined ? config.username : '';
+  const pass = config.password !== undefined ? config.password : '';
   if (user || pass) {
     const auth = btoa(`${user}:${pass}`);
     headers.append('Authorization', `Basic ${auth}`);
@@ -155,15 +147,14 @@ async function tryFetchEndpoint(baseUrl, path, config, extraOptions = {}) {
   }
 }
 
-// Fetch studies from Orthanc
+// Fetch studies from Orthanc using user-configured settings from storage
 async function fetchStudies(config) {
   config.orthancUrl = normalizeUrl(config.orthancUrl);
   
-  const rawCandidates = [
-    config.orthancUrl,
-    'http://192.168.5.155:8042',
-    'http://192.168.5.155:4242'
-  ];
+  const rawCandidates = [config.orthancUrl];
+  if (config.orthancUrl.includes(':4242')) {
+    rawCandidates.push(config.orthancUrl.replace(':4242', ':8042'));
+  }
 
   const candidateUrls = [];
   for (const url of rawCandidates) {
@@ -182,28 +173,18 @@ async function fetchStudies(config) {
     // Attempt 1: POST /tools/find
     let result = await tryFetchEndpoint(baseUrl, '/tools/find', config, { method: 'POST', body: postBody });
 
-    if (result.status === 401) {
-      const fallbackConfig = { ...config, username: 'orthanc', password: 'orthanc' };
-      result = await tryFetchEndpoint(baseUrl, '/tools/find', fallbackConfig, { method: 'POST', body: postBody });
-      if (result.ok) {
-        chrome.storage.local.set({ planb_wizzard_config: { ...config, username: 'orthanc', password: 'orthanc', orthancUrl: baseUrl } });
-      }
-    }
-
     if (result.ok && result.data) {
       studiesData = result.data;
       successfulUrl = baseUrl;
-      chrome.storage.local.set({ planb_wizzard_config: { ...config, orthancUrl: baseUrl } });
       break;
     }
 
-    // Attempt 2: GET /studies?expand
+    // Attempt 2: GET /studies?expand (Fallback)
     result = await tryFetchEndpoint(baseUrl, '/studies?expand', config, { method: 'GET' });
 
     if (result.ok && result.data) {
       studiesData = result.data;
       successfulUrl = baseUrl;
-      chrome.storage.local.set({ planb_wizzard_config: { ...config, orthancUrl: baseUrl } });
       break;
     }
 
@@ -280,7 +261,10 @@ async function fetchStudies(config) {
 // Test connection to Orthanc
 async function testConnection(config) {
   const norm = normalizeUrl(config.orthancUrl);
-  const candidateUrls = [norm, 'http://192.168.5.155:8042', 'http://192.168.5.155:4242'];
+  const candidateUrls = [norm];
+  if (norm.includes(':4242')) {
+    candidateUrls.push(norm.replace(':4242', ':8042'));
+  }
 
   for (const baseUrl of candidateUrls) {
     const result = await tryFetchEndpoint(baseUrl, '/system', config, { method: 'GET' });
@@ -289,7 +273,7 @@ async function testConnection(config) {
     }
   }
 
-  return { success: false, error: 'Не удалось подключиться к Orthanc. Проверьте адрес и порт.' };
+  return { success: false, error: 'Не удалось подключиться к Orthanc. Проверьте адрес, порт и логин/пароль.' };
 }
 
 // Message Listener

@@ -171,7 +171,7 @@
 
   // Direct fetch fallback from content script
   async function directFetchStudiesFallback() {
-    let config = { orthancUrl: 'http://192.168.5.155:8042', username: 'orthanc', password: 'orthanc', limit: 50 };
+    let config = { orthancUrl: 'http://localhost:8042', username: '', password: '', limit: 50 };
     try {
       const stored = await new Promise((res) => chrome.storage.local.get(['planb_wizzard_config'], res));
       if (stored && stored.planb_wizzard_config) {
@@ -179,17 +179,15 @@
       }
     } catch (e) {}
 
-    const candidateUrls = [
-      config.orthancUrl,
-      'http://192.168.5.155:8042',
-      'http://192.168.5.155:4242',
-      'http://localhost:8042'
-    ];
+    const candidateUrls = [config.orthancUrl];
+    if (config.orthancUrl.includes(':4242')) {
+      candidateUrls.push(config.orthancUrl.replace(':4242', ':8042'));
+    }
 
-    const headers = {
-      'Accept': 'application/json',
-      'Authorization': `Basic ${btoa(`${config.username || 'orthanc'}:${config.password || 'orthanc'}`)}`
-    };
+    const headers = { 'Accept': 'application/json' };
+    if (config.username || config.password) {
+      headers['Authorization'] = `Basic ${btoa(`${config.username}:${config.password}`)}`;
+    }
 
     const postBody = JSON.stringify({ Level: 'Study', Query: {}, Expand: true, Limit: config.limit || 50 });
 
