@@ -1,6 +1,7 @@
 /**
  * PlanB Orthanc Wizzard - Content Script
  * Fast, non-blocking injector for Wizzard button right next to "+ Добавить пациента".
+ * Automates opening PlanB's native "Добавление пациента" modal and filling starred DICOM fields.
  */
 
 (function () {
@@ -90,7 +91,7 @@
     }
   }
 
-  // Load studies with dual-layer fallback (sendMessage -> directFetch fallback)
+  // Load studies from background script or fallback
   function loadStudies(isRetry) {
     const body = document.getElementById('pbw-body');
     if (!body) return;
@@ -108,7 +109,6 @@
           const lastErr = chrome.runtime.lastError.message || '';
           console.warn('[PlanB Content] sendMessage lastError:', lastErr);
           
-          // Direct fetch fallback
           const directResult = await directFetchStudiesFallback();
           if (directResult.success) {
             const statusEl = document.getElementById('pbw-orthanc-status');
@@ -132,7 +132,6 @@
         if (!response || !response.success) {
           const errMsg = response && response.error ? response.error : 'Ошибка получения данных из Orthanc';
           
-          // Direct fetch fallback
           const directResult = await directFetchStudiesFallback();
           if (directResult.success) {
             const statusEl = document.getElementById('pbw-orthanc-status');
@@ -180,7 +179,7 @@
     } catch (e) {}
 
     const candidateUrls = [config.orthancUrl];
-    if (config.orthancUrl.includes(':4242')) {
+    if (config.orthancUrl && config.orthancUrl.includes(':4242')) {
       candidateUrls.push(config.orthancUrl.replace(':4242', ':8042'));
     }
 
@@ -536,54 +535,72 @@
     }
   }
 
-  // Helper to trigger events on inputs so frameworks (React, Vue, Angular) register changes
+  // Helper to trigger full React / Vue / Angular input events
   function setInputValue(input, value) {
-    if (!input) return;
+    if (!input || value === undefined || value === null) return;
 
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-    if (nativeInputValueSetter) {
-      nativeInputValueSetter.call(input, value);
+    input.focus();
+
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      input.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype,
+      'value'
+    )?.set;
+
+    if (nativeSetter) {
+      nativeSetter.call(input, value);
     } else {
       input.value = value;
     }
 
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-    input.dispatchEvent(new Event('blur', { bubbles: true }));
+    input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+    input.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
 
     const origBorder = input.style.borderColor;
     const origBoxShadow = input.style.boxShadow;
     input.style.borderColor = '#10b981';
-    input.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.2)';
+    input.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.25)';
     setTimeout(() => {
       input.style.borderColor = origBorder;
       input.style.boxShadow = origBoxShadow;
     }, 2500);
   }
 
-  // Populate PlanB Patient Form with Study data
+  // Action on clicking "Выбрать" next to a patient in Wizzard
   function applyStudyToPlanB(study) {
     closeModal();
 
+    // 1. Click "+ Добавить пациента" in PlanB
     const addPatientBtn = findAddPatientButton();
     if (addPatientBtn) {
       addPatientBtn.click();
     }
 
-    setTimeout(() => {
-      fillFormFields(study);
-    }, 400);
+    // 2. Poll for modal dialog and populate fields with asterisks
+    let attempts = 0;
+    const checkInterval = setInterval(() => {
+      attempts++;
+
+      const isModalVisible = document.querySelector('.modal, [role="dialog"], form, .popup, .dialog');
+      const lastNameInput = findInputByLabelOrPlaceholder(['фамилия', 'фамилия*']);
+
+      if (lastNameInput || isModalVisible || attempts > 20) {
+        clearInterval(checkInterval);
+        fillStarredFormFields(study);
+      }
+    }, 150);
   }
 
-  function fillFormFields(study) {
-    const inputs = Array.from(document.querySelectorAll('input, select, textarea'));
-    if (inputs.length === 0) return;
+  // Universal helper to find an input element by placeholder or associated label/parent text
+  function findInputByLabelOrPlaceholder(keywords) {
+    const allInputs = Array.from(document.querySelectorAll('input, textarea, select'));
 
-    inputs.forEach((input) => {
-      const id = (input.id || '').toLowerCase();
+    for (const input of allInputs) {
+      if (input.type === 'hidden' || input.type === 'submit' || input.type === 'button') continue;
+
+      const ph = (input.placeholder || '').toLowerCase();
       const name = (input.name || '').toLowerCase();
-      const placeholder = (input.placeholder || '').toLowerCase();
-      const type = (input.type || '').toLowerCase();
+      const id = (input.id || '').toLowerCase();
 
       let labelText = '';
       if (input.id) {
@@ -594,36 +611,61 @@
         labelText = (input.parentElement.textContent || '').toLowerCase();
       }
 
-      const combinedText = `${id} ${name} ${placeholder} ${labelText}`;
+      const combinedText = `${ph} ${name} ${id} ${labelText}`;
 
-      // 1. Patient ID / Card Number
-      if (combinedText.includes('id') || combinedText.includes('карт') || combinedText.includes('код') || combinedText.includes('card')) {
-        if (study.patientId) setInputValue(input, study.patientId);
+      for (const kw of keywords) {
+        const cleanKw = kw.toLowerCase().replace('*', '');
+        if (ph.includes(cleanKw) || labelText.includes(cleanKw) || name.includes(cleanKw) || id.includes(cleanKw)) {
+          return input;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // Populate starred fields from DICOM tags
+  function fillStarredFormFields(study) {
+    const allInputs = Array.from(document.querySelectorAll('input, select, textarea'));
+    if (allInputs.length === 0) return;
+
+    allInputs.forEach((input) => {
+      const ph = (input.placeholder || '').toLowerCase();
+      const name = (input.name || '').toLowerCase();
+      const id = (input.id || '').toLowerCase();
+
+      let labelText = '';
+      if (input.id) {
+        const lbl = document.querySelector(`label[for="${input.id}"]`);
+        if (lbl) labelText = (lbl.textContent || '').toLowerCase();
+      }
+      if (!labelText && input.parentElement) {
+        labelText = (input.parentElement.textContent || '').toLowerCase();
       }
 
-      // 2. Full Name (FIO)
-      else if (combinedText.includes('фио') || combinedText.includes('fio') || combinedText.includes('пациент') || combinedText.includes('patient name')) {
-        if (study.patientName.fullName) setInputValue(input, study.patientName.fullName);
+      const combinedText = `${ph} ${name} ${id} ${labelText}`;
+
+      // 1. Фамилия*
+      if (combinedText.includes('фамил')) {
+        const val = study.patientName.lastName || study.patientName.fullName || '';
+        if (val) setInputValue(input, val);
       }
 
-      // 3. Last Name (Фамилия)
-      else if (combinedText.includes('фамил') || combinedText.includes('lastname') || combinedText.includes('surname')) {
-        if (study.patientName.lastName) setInputValue(input, study.patientName.lastName);
+      // 2. Имя* (excluding Фамилия / Отчество / ФИО)
+      else if (combinedText.includes('имя') && !combinedText.includes('фамил') && !combinedText.includes('отчеств') && !combinedText.includes('фио')) {
+        const val = study.patientName.firstName || '';
+        if (val) setInputValue(input, val);
       }
 
-      // 4. First Name (Имя)
-      else if (combinedText.includes('имя') || combinedText.includes('firstname')) {
-        if (study.patientName.firstName) setInputValue(input, study.patientName.firstName);
+      // 3. Отчество (optional)
+      else if (combinedText.includes('отчеств')) {
+        const val = study.patientName.middleName || '';
+        if (val) setInputValue(input, val);
       }
 
-      // 5. Middle Name (Отчество)
-      else if (combinedText.includes('отчеств') || combinedText.includes('middlename') || combinedText.includes('patronymic')) {
-        if (study.patientName.middleName) setInputValue(input, study.patientName.middleName);
-      }
-
-      // 6. Birth Date (Дата рождения)
-      else if (combinedText.includes('рожд') || combinedText.includes('birth') || combinedText.includes('dob') || combinedText.includes('bday')) {
-        if (type === 'date') {
+      // 4. Дата рождения*
+      else if (combinedText.includes('рожд') || combinedText.includes('birth') || combinedText.includes('dob')) {
+        if (input.type === 'date') {
           if (study.patientBirthDate.iso) setInputValue(input, study.patientBirthDate.iso);
         } else {
           if (study.patientBirthDate.ru || study.patientBirthDate.iso) {
@@ -632,31 +674,60 @@
         }
       }
 
-      // 7. Gender / Sex (Пол)
-      else if (combinedText.includes('пол') || combinedText.includes('sex') || combinedText.includes('gender')) {
-        if (input.tagName.toLowerCase() === 'select') {
-          const options = Array.from(input.options);
-          const sexCode = study.patientSex.code;
-          const matchOpt = options.find((opt) => {
-            const optVal = (opt.value || '').toLowerCase();
-            const optTxt = (opt.textContent || '').toLowerCase();
-            return optVal.includes(sexCode.toLowerCase()) || optTxt.includes(study.patientSex.textRu.toLowerCase()) || optTxt.includes(study.patientSex.textEn.toLowerCase());
-          });
-          if (matchOpt) {
-            input.value = matchOpt.value;
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-        } else if (type === 'radio') {
-          const val = (input.value || '').toLowerCase();
-          if (val === study.patientSex.code.toLowerCase() || val === study.patientSex.textRu.toLowerCase()) {
-            input.checked = true;
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-        } else {
-          setInputValue(input, study.patientSex.textRu || study.patientSex.code);
-        }
+      // 5. ID*
+      else if (combinedText.includes('id*') || (combinedText.includes('id') && !combinedText.includes('снилс') && !combinedText.includes('телефон'))) {
+        const val = study.patientId || '';
+        if (val) setInputValue(input, val);
+      }
+
+      // 6. Пол* (Dropdown or Select or Radio)
+      else if (combinedText.includes('пол*') || combinedText.includes('пол')) {
+        fillGenderField(input, study.patientSex);
       }
     });
+  }
+
+  // Smart handler for Gender dropdowns / selects / radio buttons
+  function fillGenderField(element, sexInfo) {
+    if (!sexInfo || !sexInfo.textRu) return;
+    const targetText = sexInfo.textRu; // "Мужской" or "Женский"
+    const targetCode = sexInfo.code;   // "M" or "F"
+
+    // Case 1: Standard <select>
+    if (element.tagName === 'SELECT') {
+      const options = Array.from(element.options);
+      const match = options.find((opt) => {
+        const txt = (opt.textContent || '').toLowerCase();
+        const val = (opt.value || '').toLowerCase();
+        return txt.includes(targetText.toLowerCase()) || val.includes(targetCode.toLowerCase());
+      });
+      if (match) {
+        element.value = match.value;
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      return;
+    }
+
+    // Case 2: Standard <input>
+    if (element.tagName === 'INPUT' && element.type !== 'radio') {
+      setInputValue(element, targetText);
+    }
+
+    // Case 3: Custom React/Vue dropdown container
+    const container = element.closest('.select, .dropdown, [role="combobox"], [role="listbox"], div') || element.parentElement;
+    if (container) {
+      container.click();
+      setTimeout(() => {
+        const options = document.querySelectorAll('.option, [role="option"], li, div, span');
+        for (const opt of options) {
+          const txt = (opt.textContent || '').trim().toLowerCase();
+          if (txt === targetText.toLowerCase() || (targetText.startsWith('Муж') && txt.includes('муж')) || (targetText.startsWith('Жен') && txt.includes('жен'))) {
+            opt.click();
+            break;
+          }
+        }
+      }, 150);
+    }
   }
 
   // Observer to inject button as soon as DOM loads or updates, with debouncing
