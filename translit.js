@@ -86,12 +86,16 @@
     Y: 'Ы', y: 'Ы',
     X: 'КС', x: 'КС',
     W: 'В', w: 'В',
-    Q: 'К', q: 'К'
+    Q: 'К', q: 'К',
+    '`': 'Ь',
+    "'": 'Ь',
+    '’': 'Ь',
+    '′': 'Ь'
   };
 
   /**
    * Transliterates input string from Latin to Cyrillic (Russian) and converts to UPPERCASE.
-   * If input is already Cyrillic, simply converts it to UPPERCASE.
+   * If input is already Cyrillic, simply converts it to UPPERCASE and replaces apostrophes/backticks with Ь.
    * @param {string} input - Original DICOM name string
    * @returns {string} Transliterated text in UPPERCASE
    */
@@ -99,6 +103,9 @@
     if (!input || typeof input !== 'string') return '';
     let result = input.trim();
     if (!result) return '';
+
+    // Always replace apostrophes / backticks used for soft sign (Ь)
+    result = result.replace(/[`'’′]/g, 'Ь');
 
     // Check if string contains any Latin characters (A-Z, a-z)
     const hasLatin = /[a-zA-Z]/.test(result);
