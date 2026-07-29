@@ -21,7 +21,7 @@
         "https://*/*"
       ],
       "css": ["modal.css"],
-      "js": ["content.js"],
+      "js": ["translit.js", "content.js"],
       "run_at": "document_end"
     }
   ],

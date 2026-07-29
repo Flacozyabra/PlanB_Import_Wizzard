@@ -672,19 +672,28 @@
 
       // 1. Фамилия*
       if (combinedText.includes('фамил')) {
-        const val = study.patientName.lastName || study.patientName.fullName || '';
+        const rawVal = study.patientName.lastName || study.patientName.fullName || '';
+        const val = typeof window.transliterateToRussianUpper === 'function'
+          ? window.transliterateToRussianUpper(rawVal)
+          : rawVal.toUpperCase();
         if (val && input.tagName === 'INPUT') { setInputValue(input, val); filledAny = true; }
       }
 
       // 2. Имя* (excluding Фамилия / Отчество / ФИО)
       else if (combinedText.includes('имя') && !combinedText.includes('фамил') && !combinedText.includes('отчеств') && !combinedText.includes('фио')) {
-        const val = study.patientName.firstName || '';
+        const rawVal = study.patientName.firstName || '';
+        const val = typeof window.transliterateToRussianUpper === 'function'
+          ? window.transliterateToRussianUpper(rawVal)
+          : rawVal.toUpperCase();
         if (val && input.tagName === 'INPUT') { setInputValue(input, val); filledAny = true; }
       }
 
       // 3. Отчество (optional)
       else if (combinedText.includes('отчеств')) {
-        const val = study.patientName.middleName || '';
+        const rawVal = study.patientName.middleName || '';
+        const val = typeof window.transliterateToRussianUpper === 'function'
+          ? window.transliterateToRussianUpper(rawVal)
+          : rawVal.toUpperCase();
         if (val && input.tagName === 'INPUT') { setInputValue(input, val); filledAny = true; }
       }
 
@@ -707,23 +716,7 @@
         const val = study.patientId || '';
         if (val && input.tagName === 'INPUT') { setInputValue(input, val); filledAny = true; }
       }
-
-      // 6. Пол*
-      else if (combinedText.includes('пол*') || (combinedText.includes('пол') && !combinedText.includes('почта') && !combinedText.includes('область'))) {
-        if (fillGenderElementDirect(input, study.patientSex)) {
-          filledAny = true;
-        }
-      }
     });
-
-    // Gender fill — only when PlanB add-patient dialog is open
-    // Guard: Фамилия placeholder must exist = form is open
-    const hasFamilyInput = !!document.querySelector('input[placeholder*="амил"]');
-    if (hasFamilyInput) {
-      if (fillGenderInDialog(study.patientSex)) {
-        filledAny = true;
-      }
-    }
 
     return filledAny;
   }
