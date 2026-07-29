@@ -743,8 +743,6 @@
                       dialog.querySelector('.MuiSelect-select[aria-haspopup="listbox"]');
     if (!muiSelect) return false;
 
-    const isMaleGender = sexInfo.code.toLowerCase() === 'm';
-
     // Open MUI dropdown via mousedown
     muiSelect.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
     muiSelect.dispatchEvent(new MouseEvent('mouseup',   { bubbles: true, cancelable: true, view: window }));
@@ -776,6 +774,9 @@
   // Comprehensive gender field filler (standard inputs fallback)
   function fillGenderElementDirect(inputEl, sexInfo) {
     if (!sexInfo || !sexInfo.textRu) return false;
+    const targetRu = sexInfo.textRu.toLowerCase();
+    const targetCode = (sexInfo.code || '').toLowerCase();
+    const isMale = targetCode === 'm';
 
     // ── Strategy 1: standard <select> elements — find by option content ──────
     const allSelects = Array.from(document.querySelectorAll('select'));
