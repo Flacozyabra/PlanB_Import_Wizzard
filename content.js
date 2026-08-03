@@ -495,6 +495,30 @@
     return wizzardBtn;
   }
 
+  // Dynamically measure parent flex gap and apply negative margin-left to halve the visual distance
+  function applyCalculatedMargin(addPatientBtn, wizzardBtn) {
+    if (!addPatientBtn || !wizzardBtn || !addPatientBtn.parentElement) return;
+
+    try {
+      addPatientBtn.style.setProperty('margin-right', '0px', 'important');
+
+      const parentCS = window.getComputedStyle(addPatientBtn.parentElement);
+      const gapStr = parentCS.gap || parentCS.columnGap || parentCS.gridGap || '0';
+      const gapVal = parseFloat(gapStr) || 0;
+
+      if (gapVal > 0) {
+        // Shift wizzardBtn left by half of the parent's flex gap
+        const targetMargin = Math.round(-(gapVal / 2));
+        wizzardBtn.style.setProperty('margin-left', `${targetMargin}px`, 'important');
+      } else {
+        wizzardBtn.style.setProperty('margin-left', '4px', 'important');
+      }
+      wizzardBtn.style.setProperty('margin-right', '0px', 'important');
+    } catch (e) {
+      wizzardBtn.style.setProperty('margin-left', '-6px', 'important');
+    }
+  }
+
   // Inject Wizzard Button ALWAYS inline in the toolbar right next to PlanB's button
   function injectWizzardButton() {
     if (isInjecting) return;
@@ -505,16 +529,11 @@
     if (addPatientBtn && addPatientBtn.parentElement) {
       if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
 
-      // Enforce tight 2px margins on both buttons for a minimal ~4px total gap
-      try {
-        addPatientBtn.style.setProperty('margin-right', '2px', 'important');
-      } catch (e) {}
-
       wizzardBtn.style.position = 'static';
       wizzardBtn.style.display = 'inline-flex';
       wizzardBtn.style.zIndex = '100';
-      wizzardBtn.style.setProperty('margin-left', '2px', 'important');
-      wizzardBtn.style.setProperty('margin-right', '0px', 'important');
+
+      applyCalculatedMargin(addPatientBtn, wizzardBtn);
 
       if (addPatientBtn.nextSibling === wizzardBtn) {
         return; // Already placed right after addPatientBtn
