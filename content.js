@@ -495,27 +495,46 @@
     return wizzardBtn;
   }
 
-  // Dynamically measure parent flex gap and apply negative margin-left to halve the visual distance
-  function applyCalculatedMargin(addPatientBtn, wizzardBtn) {
-    if (!addPatientBtn || !wizzardBtn || !addPatientBtn.parentElement) return;
+  // Dynamically measure rendered layout coordinates and pull wizzardBtn left to halve the toolbar gap
+  function adjustWizzardButtonSpacing(addPatientBtn, wizzardBtn) {
+    if (!addPatientBtn || !wizzardBtn) return;
 
     try {
       addPatientBtn.style.setProperty('margin-right', '0px', 'important');
-
-      const parentCS = window.getComputedStyle(addPatientBtn.parentElement);
-      const gapStr = parentCS.gap || parentCS.columnGap || parentCS.gridGap || '0';
-      const gapVal = parseFloat(gapStr) || 0;
-
-      if (gapVal > 0) {
-        // Shift wizzardBtn left by half of the parent's flex gap
-        const targetMargin = Math.round(-(gapVal / 2));
-        wizzardBtn.style.setProperty('margin-left', `${targetMargin}px`, 'important');
-      } else {
-        wizzardBtn.style.setProperty('margin-left', '4px', 'important');
-      }
       wizzardBtn.style.setProperty('margin-right', '0px', 'important');
+
+      // 1. Measure standard gap between previous element and addPatientBtn
+      let standardGap = 16;
+      const prevEl = addPatientBtn.previousElementSibling;
+      if (prevEl) {
+        const prevRect = prevEl.getBoundingClientRect();
+        const addRect = addPatientBtn.getBoundingClientRect();
+        const measured = addRect.left - prevRect.right;
+        if (measured > 2 && measured < 60) {
+          standardGap = measured;
+        }
+      }
+
+      // Desired gap is half of standard gap
+      const desiredGap = Math.max(2, Math.round(standardGap / 2));
+
+      // 2. Measure unshifted raw gap between addPatientBtn and wizzardBtn
+      wizzardBtn.style.setProperty('margin-left', '0px', 'important');
+      const addRect = addPatientBtn.getBoundingClientRect();
+      const wizRect = wizzardBtn.getBoundingClientRect();
+      const rawGap = wizRect.left - addRect.right;
+
+      // 3. Apply exact negative shift to achieve desiredGap
+      let shift = 10;
+      if (rawGap > desiredGap) {
+        shift = Math.round(rawGap - desiredGap);
+      } else if (rawGap <= 0) {
+        shift = Math.round(standardGap / 2);
+      }
+
+      wizzardBtn.style.setProperty('margin-left', `-${shift}px`, 'important');
     } catch (e) {
-      wizzardBtn.style.setProperty('margin-left', '-6px', 'important');
+      wizzardBtn.style.setProperty('margin-left', '-10px', 'important');
     }
   }
 
@@ -533,7 +552,7 @@
       wizzardBtn.style.display = 'inline-flex';
       wizzardBtn.style.zIndex = '100';
 
-      applyCalculatedMargin(addPatientBtn, wizzardBtn);
+      adjustWizzardButtonSpacing(addPatientBtn, wizzardBtn);
 
       if (addPatientBtn.nextSibling === wizzardBtn) {
         return; // Already placed right after addPatientBtn
