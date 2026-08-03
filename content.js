@@ -195,7 +195,7 @@
       headers['Authorization'] = `Basic ${btoa(`${config.username}:${config.password}`)}`;
     }
 
-    const postBody = JSON.stringify({ Level: 'Study', Query: {}, Expand: true, Limit: config.limit || 50 });
+    const postBody = JSON.stringify({ Level: 'Study', Query: {}, Expand: true });
 
     for (let baseUrl of candidateUrls) {
       if (!baseUrl) continue;
@@ -385,7 +385,11 @@
         const birthParsed = formatDicomDate(rawBirth);
 
         const rawStudyDate = mainTags.StudyDate || '';
-        const studyDateParsed = formatDicomDate(rawStudyDate);
+        let studyDateParsed = formatDicomDate(rawStudyDate);
+        if (!studyDateParsed.iso && study.LastUpdate) {
+          const rawLastUpdate = String(study.LastUpdate).replace(/\D/g, '').substring(0, 8);
+          if (rawLastUpdate) studyDateParsed = formatDicomDate(rawLastUpdate);
+        }
 
         const rawSex = mainTags.PatientSex || patientMainTags.PatientSex || '';
         const sexParsed = formatGender(rawSex);
@@ -405,7 +409,10 @@
       });
 
       parsedStudies.sort((a, b) => (b.studyDate.iso || '').localeCompare(a.studyDate.iso || ''));
-      return { success: true, studies: parsedStudies, usedUrl: urlBase };
+
+      const maxLimit = config.limit && config.limit > 0 ? config.limit : 50;
+      const finalStudies = parsedStudies.slice(0, maxLimit);
+      return { success: true, studies: finalStudies, usedUrl: urlBase };
     } catch (e) {
       return { success: false, error: 'Ошибка обработки DICOM: ' + e.message };
     }

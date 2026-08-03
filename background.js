@@ -167,7 +167,7 @@ async function fetchStudies(config) {
   let successfulUrl = null;
   let studiesData = null;
 
-  const postBody = JSON.stringify({ Level: 'Study', Query: {}, Expand: true, Limit: config.limit || 50 });
+  const postBody = JSON.stringify({ Level: 'Study', Query: {}, Expand: true });
 
   for (const baseUrl of candidateUrls) {
     // Attempt 1: POST /tools/find
@@ -230,7 +230,11 @@ async function fetchStudies(config) {
       const birthParsed = formatDicomDate(rawBirth);
 
       const rawStudyDate = mainTags.StudyDate || '';
-      const studyDateParsed = formatDicomDate(rawStudyDate);
+      let studyDateParsed = formatDicomDate(rawStudyDate);
+      if (!studyDateParsed.iso && study.LastUpdate) {
+        const rawLastUpdate = String(study.LastUpdate).replace(/\D/g, '').substring(0, 8);
+        if (rawLastUpdate) studyDateParsed = formatDicomDate(rawLastUpdate);
+      }
 
       const rawSex = mainTags.PatientSex || patientMainTags.PatientSex || '';
       const sexParsed = formatGender(rawSex);
@@ -249,10 +253,14 @@ async function fetchStudies(config) {
       };
     });
 
-    // Sort by studyDate descending
+    // Sort by studyDate descending (newest / current date first)
     parsedStudies.sort((a, b) => (b.studyDate.iso || '').localeCompare(a.studyDate.iso || ''));
 
-    return { success: true, studies: parsedStudies, usedUrl: successfulUrl };
+    // Limit after sorting so top N newest studies are returned
+    const maxLimit = config.limit && config.limit > 0 ? config.limit : 50;
+    const finalStudies = parsedStudies.slice(0, maxLimit);
+
+    return { success: true, studies: finalStudies, usedUrl: successfulUrl };
   } catch (err) {
     return { success: false, error: 'Ошибка обработки списка исследований: ' + err.message };
   }
