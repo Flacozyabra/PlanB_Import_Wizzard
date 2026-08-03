@@ -503,14 +503,25 @@
     const addPatientBtn = findAddPatientButton();
 
     if (addPatientBtn && addPatientBtn.parentElement) {
-      if (wizzardBtn && addPatientBtn.nextSibling === wizzardBtn) {
+      if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
+
+      // Enforce tight 2px margins on both buttons for a minimal ~4px total gap
+      try {
+        addPatientBtn.style.setProperty('margin-right', '2px', 'important');
+      } catch (e) {}
+
+      wizzardBtn.style.position = 'static';
+      wizzardBtn.style.display = 'inline-flex';
+      wizzardBtn.style.zIndex = '100';
+      wizzardBtn.style.setProperty('margin-left', '2px', 'important');
+      wizzardBtn.style.setProperty('margin-right', '0px', 'important');
+
+      if (addPatientBtn.nextSibling === wizzardBtn) {
         return; // Already placed right after addPatientBtn
       }
 
       isInjecting = true;
       try {
-        if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
-
         // Copy exact rendered height and style properties from native button
         try {
           const rect = addPatientBtn.getBoundingClientRect();
@@ -533,11 +544,6 @@
           wizzardBtn.style.setProperty('align-self', cs.alignSelf !== 'auto' ? cs.alignSelf : 'center', 'important');
           wizzardBtn.style.setProperty('vertical-align', cs.verticalAlign, 'important');
         } catch (e) {}
-
-        wizzardBtn.style.position = 'static';
-        wizzardBtn.style.display = 'inline-flex';
-        wizzardBtn.style.zIndex = '100';
-        wizzardBtn.style.setProperty('margin-left', '4px', 'important');
 
         addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
       } finally {
