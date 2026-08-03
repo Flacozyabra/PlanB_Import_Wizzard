@@ -545,67 +545,55 @@
     let wizzardBtn = document.getElementById('planb-wizzard-btn');
     const addPatientBtn = findAddPatientButton();
 
-    if (addPatientBtn && addPatientBtn.parentElement) {
-      if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
-
-      wizzardBtn.style.position = 'static';
-      wizzardBtn.style.display = 'inline-flex';
-      wizzardBtn.style.zIndex = '100';
-
-      adjustWizzardButtonSpacing(addPatientBtn, wizzardBtn);
-
-      if (addPatientBtn.nextSibling === wizzardBtn) {
-        return; // Already placed right after addPatientBtn
-      }
-
-      isInjecting = true;
-      try {
-        // Copy exact rendered height and style properties from native button
-        try {
-          const rect = addPatientBtn.getBoundingClientRect();
-          const cs = window.getComputedStyle(addPatientBtn);
-          if (rect && rect.height > 0) {
-            const h = rect.height + 'px';
-            wizzardBtn.style.setProperty('height', h, 'important');
-            wizzardBtn.style.setProperty('min-height', h, 'important');
-            wizzardBtn.style.setProperty('max-height', h, 'important');
-          }
-          if (cs.paddingTop) wizzardBtn.style.setProperty('padding-top', cs.paddingTop, 'important');
-          if (cs.paddingBottom) wizzardBtn.style.setProperty('padding-bottom', cs.paddingBottom, 'important');
-          if (cs.borderRadius && cs.borderRadius !== '0px' && cs.borderRadius !== '0px 0px 0px 0px') {
-            wizzardBtn.style.setProperty('border-radius', cs.borderRadius, 'important');
-          } else {
-            wizzardBtn.style.setProperty('border-radius', '4px', 'important');
-          }
-          if (cs.fontSize) wizzardBtn.style.setProperty('font-size', cs.fontSize, 'important');
-          if (cs.fontWeight) wizzardBtn.style.setProperty('font-weight', cs.fontWeight, 'important');
-          wizzardBtn.style.setProperty('align-self', cs.alignSelf !== 'auto' ? cs.alignSelf : 'center', 'important');
-          wizzardBtn.style.setProperty('vertical-align', cs.verticalAlign, 'important');
-        } catch (e) {}
-
-        addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
-      } finally {
-        setTimeout(() => { isInjecting = false; }, 50);
+    // If '+ Добавить пациента' button is NOT present on the page (e.g. inside a patient card), hide Wizzard button
+    if (!addPatientBtn || !addPatientBtn.parentElement) {
+      if (wizzardBtn) {
+        wizzardBtn.style.display = 'none';
       }
       return;
     }
 
-    const searchInput = document.querySelector('input[placeholder*="ФИО"], input[placeholder*="фио"], input[placeholder*="пациент"], input[placeholder*="поиск"]');
-    if (searchInput && searchInput.parentElement) {
-      const container = searchInput.closest('.MuiBox-root, form, header, nav') || searchInput.parentElement;
-      if (wizzardBtn && container.contains(wizzardBtn)) return;
+    // Button is present — ensure wizzardBtn is created and visible
+    if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
+    wizzardBtn.style.display = 'inline-flex';
+    wizzardBtn.style.position = 'static';
+    wizzardBtn.style.zIndex = '100';
 
-      isInjecting = true;
+    adjustWizzardButtonSpacing(addPatientBtn, wizzardBtn);
+
+    if (addPatientBtn.nextSibling === wizzardBtn) {
+      return; // Already placed right after addPatientBtn
+    }
+
+    isInjecting = true;
+    try {
+      // Copy exact rendered height and style properties from native button
       try {
-        if (!wizzardBtn) wizzardBtn = createWizzardBtnElement();
-        wizzardBtn.style.position = 'static';
-        wizzardBtn.style.display = 'inline-flex';
-        wizzardBtn.style.zIndex = '100';
-        container.appendChild(wizzardBtn);
-      } finally {
-        setTimeout(() => { isInjecting = false; }, 50);
-      }
-      return;
+        const rect = addPatientBtn.getBoundingClientRect();
+        const cs = window.getComputedStyle(addPatientBtn);
+        if (rect && rect.height > 0) {
+          const h = rect.height + 'px';
+          wizzardBtn.style.setProperty('height', h, 'important');
+          wizzardBtn.style.setProperty('min-height', h, 'important');
+          wizzardBtn.style.setProperty('max-height', h, 'important');
+        }
+        if (cs.paddingTop) wizzardBtn.style.setProperty('padding-top', cs.paddingTop, 'important');
+        if (cs.paddingBottom) wizzardBtn.style.setProperty('padding-bottom', cs.paddingBottom, 'important');
+        if (cs.borderRadius && cs.borderRadius !== '0px' && cs.borderRadius !== '0px 0px 0px 0px') {
+          wizzardBtn.style.setProperty('border-radius', cs.borderRadius, 'important');
+        } else {
+          wizzardBtn.style.setProperty('border-radius', '4px', 'important');
+        }
+        if (cs.fontSize) wizzardBtn.style.setProperty('font-size', cs.fontSize, 'important');
+        if (cs.fontWeight) wizzardBtn.style.setProperty('font-weight', cs.fontWeight, 'important');
+        wizzardBtn.style.setProperty('align-self', cs.alignSelf !== 'auto' ? cs.alignSelf : 'center', 'important');
+        wizzardBtn.style.setProperty('vertical-align', cs.verticalAlign, 'important');
+      } catch (e) {}
+
+      addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
+      adjustWizzardButtonSpacing(addPatientBtn, wizzardBtn);
+    } finally {
+      setTimeout(() => { isInjecting = false; }, 50);
     }
   }
 
