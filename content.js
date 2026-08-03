@@ -537,6 +537,7 @@
         wizzardBtn.style.position = 'static';
         wizzardBtn.style.display = 'inline-flex';
         wizzardBtn.style.zIndex = '100';
+        wizzardBtn.style.setProperty('margin-left', '4px', 'important');
 
         addPatientBtn.parentElement.insertBefore(wizzardBtn, addPatientBtn.nextSibling);
       } finally {
