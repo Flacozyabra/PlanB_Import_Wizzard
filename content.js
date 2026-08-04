@@ -455,7 +455,7 @@
       .replace(/"/g, '&quot;');
   }
 
-  // Real-time locator to find PlanB's "+ Добавить пациента" or "+ Создать запись" button
+  // Real-time locator to find PlanB's "+ Добавить пациента" button
   function findAddPatientButton() {
     // Scan live DOM tree for matching button
     const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], .btn, .button, div, span'));
@@ -467,15 +467,7 @@
       if (text.length === 0 || text.length > 60) continue;
 
       const lowerText = text.toLowerCase();
-      if (
-        lowerText.includes('добавить пациента') ||
-        lowerText.includes('создать запись') ||
-        lowerText.includes('добавить запись') ||
-        lowerText.includes('создать пациента') ||
-        lowerText.includes('новый пациент') ||
-        lowerText.includes('add patient') ||
-        (lowerText.includes('пациент') && (lowerText.includes('добавить') || lowerText.includes('создать') || lowerText.includes('+')))
-      ) {
+      if (lowerText.includes('добавить пациента')) {
         const btn = el.closest('button, a, [role="button"], .btn') || el;
         if (btn && btn.id !== 'planb-wizzard-btn') {
           return btn;
@@ -543,6 +535,15 @@
     if (isInjecting) return;
 
     let wizzardBtn = document.getElementById('planb-wizzard-btn');
+
+    // Do not inject inside a specific patient's profile page (/patients/<id>)
+    if (/\/patients\/[^\/]+/.test(window.location.pathname)) {
+      if (wizzardBtn) {
+        wizzardBtn.style.display = 'none';
+      }
+      return;
+    }
+
     const addPatientBtn = findAddPatientButton();
 
     // If '+ Добавить пациента' button is NOT present on the page (e.g. inside a patient card), hide Wizzard button
